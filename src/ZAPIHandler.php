@@ -6,12 +6,14 @@ class ZAPIHandler
 {
     private $instanceId;
     private $token;
+    private $securityToken;
     private $baseUrl;
 
     public function __construct()
     {
         $this->instanceId = ZAPI_INSTANCE_ID;
         $this->token = ZAPI_TOKEN;
+        $this->securityToken = ZAPI_SECURITY_TOKEN;
         $this->baseUrl = ZAPI_BASE_URL;
     }
 
@@ -47,25 +49,43 @@ class ZAPIHandler
         $data = [
             'phone' => $phone,
             'message' => $message,
+            'delayMessage' => false, // Garante envio imediato
             'media' => $attachment
         ];
 
-        return $this->makeRequest('POST', $endpoint, $data);
+        Logger::log('info', 'Preparing to send message to Z-API', [
+            'formatted_phone' => $phone,
+            'original_message' => $message,
+            'endpoint' => $endpoint
+        ]);
+
+        $response = $this->makeRequest('POST', $endpoint, $data);
+
+        Logger::log('info', 'Z-API response', [
+            'response' => $response
+        ]);
+
+        return $response;
     }
 
     private function makeRequest($method, $endpoint, $data)
     {
+        $url = $endpoint . '/send-text';
+
         $headers = [
             'Content-Type: application/json',
-            'client-token: ' . $this->token
+            'Client-Token: ' . $this->securityToken
         ];
 
-        $ch = curl_init($endpoint);
+        // Inicializa CURL
+        $ch = curl_init();
 
-        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_VERBOSE, true);
 
         $verbose = fopen('php://temp', 'w+');

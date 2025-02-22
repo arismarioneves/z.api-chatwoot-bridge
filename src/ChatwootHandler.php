@@ -49,19 +49,6 @@ class ChatwootHandler
         throw new \Exception('Unrecognized webhook format');
     }
 
-    private function formatPhoneNumber($phone)
-    {
-        // Remove qualquer caractere não numérico
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-
-        // Adiciona o prefixo + se não existir
-        if (substr($phone, 0, 1) !== '+') {
-            $phone = '+' . $phone;
-        }
-
-        return $phone;
-    }
-
     public function sendMessage($sourceId, $message, $attachments = [])
     {
         Logger::log('info', 'Preparing to send message to Chatwoot', [
@@ -79,8 +66,8 @@ class ChatwootHandler
             return false;
         }
 
-        // Depois, vamos criar ou buscar a conversa
-        $conversationId = $this->getOrCreateConversation($formattedPhone, $contactId);
+        // Depois, vamos buscar ou criar a conversa
+        $conversationId = $this->getOrCreateConversation($contactId);
 
         if (!$conversationId) {
             Logger::log('error', 'Failed to create or get conversation');
@@ -92,7 +79,8 @@ class ChatwootHandler
 
         $data = [
             'content' => $message,
-            'message_type' => 'incoming'
+            'message_type' => 'incoming',
+            'private' => false
         ];
 
         if (!empty($attachments)) {
@@ -110,12 +98,16 @@ class ChatwootHandler
 
     private function getOrCreateContact($phone, $originalPhone)
     {
-        // Primeiro, tenta buscar o contato existente
+        // Busca o contato pelo número de telefone
         $searchEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/search?q=" . urlencode($phone);
         $searchResponse = $this->makeRequest('GET', $searchEndpoint);
 
-        if (!empty($searchResponse['payload']) && !empty($searchResponse['payload'][0]['id'])) {
-            return $searchResponse['payload'][0]['id'];
+        if (!empty($searchResponse['payload']) && is_array($searchResponse['payload'])) {
+            foreach ($searchResponse['payload'] as $contact) {
+                if (isset($contact['phone_number']) && ($contact['phone_number'] === $phone || $contact['phone_number'] === ltrim($phone, '+'))) {
+                    return $contact['id'];
+                }
+            }
         }
 
         // Se não encontrou, cria um novo contato
@@ -142,32 +134,68 @@ class ChatwootHandler
         return null;
     }
 
-    private function getOrCreateConversation($phone, $contactId)
+    private function getOrCreateConversation($contactId)
     {
-        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
-
-        $data = [
-            'source_id' => $phone,
-            'inbox_id' => (int)$this->inboxId,
+        // Busca a contact_inbox existente
+        $inboxEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contact_inboxes";
+        $params = [
             'contact_id' => $contactId,
-            'status' => 'pending'
+            'inbox_id' => $this->inboxId
         ];
 
-        $response = $this->makeRequest('POST', $endpoint, $data);
+        $response = $this->makeRequest('GET', $inboxEndpoint . '?' . http_build_query($params));
 
-        Logger::log('info', 'Create conversation response', [
-            'response' => $response
-        ]);
+        $contactInboxId = null;
 
-        // Verifica se a resposta contém o ID da conversa
+        if (!empty($response['payload'])) {
+            foreach ($response['payload'] as $contactInbox) {
+                if ($contactInbox['contact_id'] == $contactId && $contactInbox['inbox_id'] == $this->inboxId) {
+                    $contactInboxId = $contactInbox['id'];
+                    break;
+                }
+            }
+        }
+
+        if ($contactInboxId) {
+            // Busca a conversa existente
+            $conversationsEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
+            $params = ['contact_inbox_id' => $contactInboxId];
+
+            $response = $this->makeRequest('GET', $conversationsEndpoint . '?' . http_build_query($params));
+
+            if (!empty($response['data'])) {
+                foreach ($response['data'] as $conversation) {
+                    // Atualiza o status da conversa para "open"
+                    $this->updateConversationStatus($conversation['id'], 'open');
+                    return $conversation['id'];
+                }
+            }
+        }
+
+        // Se não encontrou, cria uma nova conversa
+        $createEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
+        $data = [
+            'contact_id' => $contactId,
+            'inbox_id' => (int)$this->inboxId,
+            'status' => 'open',
+            'source_id' => (string)$contactId
+        ];
+
+        $response = $this->makeRequest('POST', $createEndpoint, $data);
+
         if (isset($response['id'])) {
             return $response['id'];
-        } elseif (isset($response['contact_inbox']['id'])) {
-            // Algumas versões do Chatwoot retornam o ID desta forma
-            return $response['contact_inbox']['id'];
         }
 
         return null;
+    }
+
+    private function updateConversationStatus($conversationId, $status)
+    {
+        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations/{$conversationId}";
+        $data = ['status' => $status];
+
+        return $this->makeRequest('PUT', $endpoint, $data);
     }
 
     private function makeRequest($method, $url, $data = null)
@@ -177,41 +205,39 @@ class ChatwootHandler
             'api_access_token: ' . $this->apiToken
         ];
 
-        $ch = curl_init($url);
-
-        if ($method === 'POST') {
-            curl_setopt($ch, CURLOPT_POST, 1);
-            if ($data !== null) {
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-            }
-        }
-
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-        // Adiciona logs de debug
-        curl_setopt($ch, CURLOPT_VERBOSE, true);
-        $verbose = fopen('php://temp', 'w+');
-        curl_setopt($ch, CURLOPT_STDERR, $verbose);
+        if ($method === 'POST' || $method === 'PUT') {
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        }
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-        // Log da requisição completa
-        rewind($verbose);
-        $verboseLog = stream_get_contents($verbose);
-
-        Logger::log('info', 'API Request Details', [
+        Logger::log('info', 'API Request', [
             'url' => $url,
             'method' => $method,
             'data' => $data,
-            'http_code' => $httpCode,
             'response' => $response,
-            'verbose_log' => $verboseLog
+            'http_code' => $httpCode
         ]);
 
         curl_close($ch);
 
-        return json_decode($response, true);
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return json_decode($response, true);
+        }
+
+        return null;
+    }
+
+    private function formatPhoneNumber($phone)
+    {
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        return '+' . $phone;
     }
 }
