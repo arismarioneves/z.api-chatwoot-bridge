@@ -1,13 +1,10 @@
 <?php
-require_once __DIR__ . '/../vendor/autoload.php';
+
+include 'vendor/autoload.php';
+include 'config.php';
 
 use WhatsappBridge\Logger;
 use WhatsappBridge\WebhookHandler;
-use Dotenv\Dotenv;
-
-// Carrega variáveis de ambiente
-$dotenv = Dotenv::createImmutable(__DIR__ . '/..');
-$dotenv->load();
 
 // Configura headers
 header('Content-Type: application/json');

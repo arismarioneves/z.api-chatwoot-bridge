@@ -11,10 +11,10 @@ class ChatwootHandler
 
     public function __construct()
     {
-        $this->baseUrl = $_ENV['CHATWOOT_BASE_URL'];
-        $this->apiToken = $_ENV['CHATWOOT_API_TOKEN'];
-        $this->accountId = $_ENV['CHATWOOT_ACCOUNT_ID'];
-        $this->inboxId = $_ENV['CHATWOOT_INBOX_ID'];
+        $this->baseUrl = CHATWOOT_BASE_URL;
+        $this->apiToken = CHATWOOT_API_TOKEN;
+        $this->accountId = CHATWOOT_ACCOUNT_ID;
+        $this->inboxId = CHATWOOT_INBOX_ID;
     }
 
     public function handle($payload)

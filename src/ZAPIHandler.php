@@ -10,9 +10,9 @@ class ZAPIHandler
 
     public function __construct()
     {
-        $this->instanceId = $_ENV['ZAPI_INSTANCE_ID'];
-        $this->token = $_ENV['ZAPI_TOKEN'];
-        $this->baseUrl = $_ENV['ZAPI_BASE_URL'];
+        $this->instanceId = ZAPI_INSTANCE_ID;
+        $this->token = ZAPI_TOKEN;
+        $this->baseUrl = ZAPI_BASE_URL;
     }
 
     public function sendMessage($phone, $message, $attachment = null)

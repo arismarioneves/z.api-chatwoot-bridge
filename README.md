@@ -25,11 +25,11 @@ CHATWOOT_INBOX_ID="inbox-id"
 ```
 z.api-chatwoot-bridge/
 ├── src/
+│   ├── WebhookHandler.php
 │   ├── ZAPIHandler.php
 │   ├── ChatwootHandler.php
 │   └── Logger.php
-├── public/
-│   └── webhook.php
+├── webhook.php
 ├── logs/
 │   └── app.log
 └── composer.json

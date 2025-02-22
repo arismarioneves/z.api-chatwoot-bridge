@@ -2,8 +2,8 @@
 /composer.lock
 /vendor
 
-# Environment
-/.env
+# Configuração
+/config.php
 
 # Logs
 /logs
