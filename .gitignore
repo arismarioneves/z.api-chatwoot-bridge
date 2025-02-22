@@ -1,0 +1,9 @@
+# Composer
+/composer.lock
+/vendor
+
+# Environment
+/.env
+
+# Logs
+/logs
