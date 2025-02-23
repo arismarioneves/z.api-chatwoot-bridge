@@ -17,36 +17,13 @@ class ChatwootHandler
         $this->inboxId = CHATWOOT_INBOX_ID;
     }
 
-    public function handle($payload)
+    private function formatPhoneNumber($phone)
     {
-        Logger::log('info', 'Webhook received', ['payload' => $payload]);
-
-        // Verifica se é um webhook do Chatwoot
-        if (isset($payload['event']) && $payload['event'] === 'message_updated') {
-            // Ignora atualizações de status de mensagem
-            return true;
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        if (!str_starts_with($phone, '55')) {
+            $phone = '55' . $phone;
         }
-
-        // Verifica se é uma mensagem do agente
-        if (isset($payload['message_type']) && $payload['message_type'] === 'outgoing') {
-            $message = $payload['content'];
-            $phone = null;
-
-            // Tenta obter o número do telefone da conversa
-            if (isset($payload['conversation']['contact_inbox']['source_id'])) {
-                $phone = $payload['conversation']['contact_inbox']['source_id'];
-                // Remove o + do início do número
-                $phone = ltrim($phone, '+');
-            }
-
-            if ($phone && $message) {
-                $zapi = new ZAPIHandler();
-                return $zapi->sendMessage($phone, $message);
-            }
-        }
-
-        Logger::log('warning', 'Unrecognized webhook format', ['data' => $payload]);
-        throw new \Exception('Unrecognized webhook format');
+        return $phone;
     }
 
     public function sendMessage($sourceId, $message, $attachments = [])
@@ -58,23 +35,21 @@ class ChatwootHandler
 
         $formattedPhone = $this->formatPhoneNumber($sourceId);
 
-        // Primeiro, vamos criar ou buscar o contato
-        $contactId = $this->getOrCreateContact($formattedPhone, $sourceId);
-
+        // Busca contato existente
+        $contactId = $this->findOrCreateContact($formattedPhone);
         if (!$contactId) {
-            Logger::log('error', 'Failed to create or get contact');
+            Logger::log('error', 'Failed to find or create contact');
             return false;
         }
 
-        // Depois, vamos buscar ou criar a conversa
-        $conversationId = $this->getOrCreateConversation($contactId);
-
+        // Busca conversa existente
+        $conversationId = $this->findOrCreateConversation($formattedPhone, $contactId);
         if (!$conversationId) {
-            Logger::log('error', 'Failed to create or get conversation');
+            Logger::log('error', 'Failed to find or create conversation');
             return false;
         }
 
-        // Agora vamos enviar a mensagem
+        // Envia a mensagem
         $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations/{$conversationId}/messages";
 
         $data = [
@@ -87,115 +62,104 @@ class ChatwootHandler
             $data['attachments'] = $attachments;
         }
 
-        $response = $this->makeRequest('POST', $endpoint, $data);
-
-        Logger::log('info', 'Send message response', [
-            'response' => $response
-        ]);
-
-        return $response;
+        return $this->makeRequest('POST', $endpoint, $data);
     }
 
-    private function getOrCreateContact($phone, $originalPhone)
+    private function findOrCreateContact($phone)
     {
-        // Busca o contato pelo número de telefone
-        $searchEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/search?q=" . urlencode($phone);
-        $searchResponse = $this->makeRequest('GET', $searchEndpoint);
+        // Primeiro, tenta buscar pelo source_id
+        $searchEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/search";
+        $searchResponse = $this->makeRequest('GET', $searchEndpoint . '?q=' . urlencode($phone));
 
-        if (!empty($searchResponse['payload']) && is_array($searchResponse['payload'])) {
-            foreach ($searchResponse['payload'] as $contact) {
-                if (isset($contact['phone_number']) && ($contact['phone_number'] === $phone || $contact['phone_number'] === ltrim($phone, '+'))) {
-                    return $contact['id'];
-                }
-            }
+        if (!empty($searchResponse['payload']) && count($searchResponse['payload']) > 0) {
+            $contact = $searchResponse['payload'][0];
+            // Atualiza o perfil do contato existente
+            $this->updateContactProfile($contact['id'], $phone);
+            return $contact['id'];
         }
 
-        // Se não encontrou, cria um novo contato
+        // Se não encontrou, cria novo contato
         $createEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts";
+
+        // Busca informações do perfil no WhatsApp
+        $profileInfo = $this->getWhatsAppProfile($phone);
+
         $data = [
-            'inbox_id' => $this->inboxId,
-            'name' => "WhatsApp " . $originalPhone,
+            'inbox_id' => (int)$this->inboxId,
+            'name' => $profileInfo['name'] ?? $phone,
             'phone_number' => $phone,
-            'identifier' => $originalPhone
+            'identifier' => $phone,
+            'source_id' => $phone
         ];
+
+        if (!empty($profileInfo['avatar_url'])) {
+            $data['avatar_url'] = $profileInfo['avatar_url'];
+        }
 
         $response = $this->makeRequest('POST', $createEndpoint, $data);
 
-        // Verifica se a resposta contém o payload do contato
-        if (isset($response['payload']['contact']['id'])) {
-            return $response['payload']['contact']['id'];
-        }
-
-        Logger::log('error', 'Failed to create contact', [
-            'response' => $response,
-            'data' => $data
-        ]);
-
-        return null;
+        return $response['id'] ?? null;
     }
 
-    private function getOrCreateConversation($contactId)
+    private function findOrCreateConversation($phone, $contactId)
     {
-        // Busca a contact_inbox existente
-        $inboxEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contact_inboxes";
-        $params = [
-            'contact_id' => $contactId,
-            'inbox_id' => $this->inboxId
-        ];
+        // Busca conversa existente
+        $searchEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
+        $searchParams = http_build_query([
+            'inbox_id' => $this->inboxId,
+            'status' => 'all',
+            'source_id' => $phone
+        ]);
 
-        $response = $this->makeRequest('GET', $inboxEndpoint . '?' . http_build_query($params));
+        $response = $this->makeRequest('GET', $searchEndpoint . '?' . $searchParams);
 
-        $contactInboxId = null;
-
-        if (!empty($response['payload'])) {
-            foreach ($response['payload'] as $contactInbox) {
-                if ($contactInbox['contact_id'] == $contactId && $contactInbox['inbox_id'] == $this->inboxId) {
-                    $contactInboxId = $contactInbox['id'];
-                    break;
-                }
-            }
-        }
-
-        if ($contactInboxId) {
-            // Busca a conversa existente
-            $conversationsEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
-            $params = ['contact_inbox_id' => $contactInboxId];
-
-            $response = $this->makeRequest('GET', $conversationsEndpoint . '?' . http_build_query($params));
-
-            if (!empty($response['data'])) {
-                foreach ($response['data'] as $conversation) {
-                    // Atualiza o status da conversa para "open"
-                    $this->updateConversationStatus($conversation['id'], 'open');
+        if (!empty($response['data'])) {
+            foreach ($response['data'] as $conversation) {
+                if ($conversation['contact_inbox']['source_id'] === $phone) {
                     return $conversation['id'];
                 }
             }
         }
 
-        // Se não encontrou, cria uma nova conversa
+        // Se não encontrou, cria nova conversa
         $createEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
         $data = [
-            'contact_id' => $contactId,
+            'source_id' => $phone,
             'inbox_id' => (int)$this->inboxId,
-            'status' => 'open',
-            'source_id' => (string)$contactId
+            'contact_id' => (int)$contactId,
+            'status' => 'open'
         ];
 
         $response = $this->makeRequest('POST', $createEndpoint, $data);
-
-        if (isset($response['id'])) {
-            return $response['id'];
-        }
-
-        return null;
+        return $response['id'] ?? null;
     }
 
-    private function updateConversationStatus($conversationId, $status)
+    private function getWhatsAppProfile($phone)
     {
-        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations/{$conversationId}";
-        $data = ['status' => $status];
+        try {
+            $zapi = new ZAPIHandler();
+            return $zapi->getProfileInfo($phone);
+        } catch (\Exception $e) {
+            Logger::log('error', 'Failed to get WhatsApp profile', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
 
-        return $this->makeRequest('PUT', $endpoint, $data);
+    private function updateContactProfile($contactId, $phone)
+    {
+        $profileInfo = $this->getWhatsAppProfile($phone);
+        if (empty($profileInfo)) return;
+
+        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/{$contactId}";
+        $data = [
+            'name' => $profileInfo['name'] ?? $phone
+        ];
+
+        if (!empty($profileInfo['avatar_url'])) {
+            $data['avatar_url'] = $profileInfo['avatar_url'];
+        }
+
+        $this->makeRequest('PUT', $endpoint, $data);
     }
 
     private function makeRequest($method, $url, $data = null)
@@ -210,34 +174,27 @@ class ChatwootHandler
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-        if ($method === 'POST' || $method === 'PUT') {
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        if ($method === 'POST') {
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        } elseif ($method === 'PUT') {
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         }
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-        Logger::log('info', 'API Request', [
-            'url' => $url,
-            'method' => $method,
-            'data' => $data,
-            'response' => $response,
-            'http_code' => $httpCode
-        ]);
+        if (curl_errno($ch)) {
+            Logger::log('error', 'API request failed', [
+                'url' => $url,
+                'error' => curl_error($ch),
+                'http_code' => $httpCode
+            ]);
+        }
 
         curl_close($ch);
 
-        if ($httpCode >= 200 && $httpCode < 300) {
-            return json_decode($response, true);
-        }
-
-        return null;
-    }
-
-    private function formatPhoneNumber($phone)
-    {
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-        return '+' . $phone;
+        return json_decode($response, true);
     }
 }

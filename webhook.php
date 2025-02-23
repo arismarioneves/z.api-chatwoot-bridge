@@ -4,7 +4,8 @@ include 'vendor/autoload.php';
 include 'config.php';
 
 use WhatsappBridge\Logger;
-use WhatsappBridge\WebhookHandler;
+use WhatsappBridge\ZAPIHandler;
+use WhatsappBridge\ChatwootHandler;
 
 // Configura headers
 header('Content-Type: application/json');
@@ -30,12 +31,76 @@ if (!$data) {
 }
 
 try {
-    $handler = new WebhookHandler();
-    $result = $handler->handle($data);
+    // Identificar origem do webhook
+    if (isset($data['event'])) {
+        switch ($data['event']) {
+            case 'message_created':
+                handleChatwootMessage($data);
+                break;
+            case 'contact_updated':
+            case 'conversation_updated':
+            case 'message_updated':
+                // Ignorar estes eventos
+                echo json_encode(['status' => 'ignored']);
+                break;
+            default:
+                Logger::log('info', 'Unhandled Chatwoot event', ['event' => $data['event']]);
+                break;
+        }
+    } elseif (isset($data['phone']) && isset($data['type'])) {
+        handleZAPIWebhook($data);
+    } else {
+        throw new Exception('Unrecognized webhook format');
+    }
 
-    echo json_encode(['status' => 'success', 'result' => $result]);
+    echo json_encode(['status' => 'success']);
 } catch (Exception $e) {
     Logger::log('error', 'Webhook processing failed', ['error' => $e->getMessage()]);
     http_response_code(500);
     echo json_encode(['error' => $e->getMessage()]);
+}
+
+function handleZAPIWebhook($data)
+{
+    if (isset($data['fromMe']) && $data['fromMe']) {
+        return; // Ignora mensagens enviadas pelo próprio sistema
+    }
+
+    $chatwoot = new ChatwootHandler();
+    $phone = $data['phone'] ?? '';
+    $message = $data['text']['message'] ?? $data['message'] ?? '';
+
+    // Processa anexos se houver
+    $attachments = [];
+    if (isset($data['media'])) {
+        $attachments[] = [
+            'url' => $data['media'],
+            'type' => $data['type'] ?? 'file'
+        ];
+    }
+
+    if (empty($message) && !empty($attachments)) {
+        $message = '[Mídia enviada]';
+    }
+
+    $chatwoot->sendMessage($phone, $message, $attachments);
+}
+
+function handleChatwootMessage($data)
+{
+    // Processa apenas mensagens de saída não-privadas
+    if ($data['message_type'] !== 'outgoing' || ($data['private'] ?? false)) {
+        return;
+    }
+
+    $zapi = new ZAPIHandler();
+    $phone = $data['conversation']['contact_inbox']['source_id'] ?? '';
+    $message = $data['content'] ?? '';
+
+    if (empty($phone) || empty($message)) {
+        Logger::log('error', 'Missing required data for sending message');
+        return;
+    }
+
+    $zapi->sendMessage($phone, $message);
 }

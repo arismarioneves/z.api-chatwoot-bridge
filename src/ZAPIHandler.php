@@ -17,7 +17,7 @@ class ZAPIHandler
         $this->baseUrl = ZAPI_BASE_URL;
     }
 
-    public function sendMessage($phone, $message, $attachment = null)
+    public function sendMessage($phone, $message)
     {
         Logger::log('info', 'Sending message through Z-API', [
             'phone' => $phone,
@@ -25,10 +25,7 @@ class ZAPIHandler
             'has_attachment' => !empty($attachment)
         ]);
 
-        // Se tiver anexo, use o endpoint apropriado
-        if ($attachment) {
-            return $this->sendMessageWithAttachment($phone, $message, $attachment);
-        }
+        $phone = $this->formatPhoneNumber($phone);
 
         $endpoint = "{$this->baseUrl}/instances/{$this->instanceId}/token/{$this->token}/send-text";
 
@@ -37,85 +34,80 @@ class ZAPIHandler
             'message' => $message
         ];
 
-        return $this->makeRequest('POST', $endpoint, $data);
-    }
-
-    private function sendMessageWithAttachment($phone, $message, $attachment)
-    {
-        // Implemente a lógica para enviar mensagens com anexos
-        // Use o endpoint correto da Z-API para cada tipo de mídia
-        $endpoint = "{$this->baseUrl}/instances/{$this->instanceId}/token/{$this->token}/send-media";
-
-        $data = [
+        Logger::log('info', 'Sending message via Z-API', [
             'phone' => $phone,
-            'message' => $message,
-            'delayMessage' => false, // Garante envio imediato
-            'media' => $attachment
-        ];
-
-        Logger::log('info', 'Preparing to send message to Z-API', [
-            'formatted_phone' => $phone,
-            'original_message' => $message,
             'endpoint' => $endpoint
         ]);
 
-        $response = $this->makeRequest('POST', $endpoint, $data);
-
-        Logger::log('info', 'Z-API response', [
-            'response' => $response
-        ]);
-
-        return $response;
+        return $this->makeRequest('POST', $endpoint, $data);
     }
 
-    private function makeRequest($method, $endpoint, $data)
+    public function getProfileInfo($phone)
     {
-        $url = $endpoint . '/send-text';
+        $phone = $this->formatPhoneNumber($phone);
 
+        // Endpoint correto para obter informações do perfil
+        $endpoint = "{$this->baseUrl}/instances/{$this->instanceId}/token/{$this->token}/profile";
+
+        $data = ['phone' => $phone];
+        $response = $this->makeRequest('GET', $endpoint, $data);
+
+        if ($response && isset($response['phone'])) {
+            // Buscar foto do perfil
+            $profilePicEndpoint = "{$this->baseUrl}/instances/{$this->instanceId}/token/{$this->token}/profile-picture";
+            $picResponse = $this->makeRequest('GET', $profilePicEndpoint, ['phone' => $phone]);
+
+            return [
+                'name' => $response['name'] ?? $phone,
+                'avatar_url' => $picResponse['profileImage'] ?? null,
+                'phone' => $phone
+            ];
+        }
+
+        return null;
+    }
+
+    private function makeRequest($method, $url, $data = [])
+    {
         $headers = [
             'Content-Type: application/json',
             'Client-Token: ' . $this->securityToken
         ];
 
-        // Inicializa CURL
         $ch = curl_init();
-
         curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        curl_setopt($ch, CURLOPT_VERBOSE, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-        $verbose = fopen('php://temp', 'w+');
-        curl_setopt($ch, CURLOPT_STDERR, $verbose);
+        if ($method === 'POST') {
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        } elseif ($method === 'GET' && !empty($data)) {
+            $url .= '?' . http_build_query($data);
+            curl_setopt($ch, CURLOPT_URL, $url);
+        }
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-        rewind($verbose);
-        $verboseLog = stream_get_contents($verbose);
-
-        Logger::log('info', 'Z-API Response', [
-            'endpoint' => $endpoint,
-            'http_code' => $httpCode,
+        Logger::log('debug', 'Z-API Request', [
+            'url' => $url,
+            'method' => $method,
             'response' => $response,
-            'verbose_log' => $verboseLog
+            'http_code' => $httpCode
         ]);
 
         curl_close($ch);
 
-        $responseData = json_decode($response, true);
+        return json_decode($response, true);
+    }
 
-        if ($httpCode !== 200 || !isset($responseData['zaapId'])) {
-            Logger::log('error', 'Z-API request failed', [
-                'http_code' => $httpCode,
-                'response' => $responseData
-            ]);
-            return false;
+    private function formatPhoneNumber($phone)
+    {
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        if (!str_starts_with($phone, '55')) {
+            $phone = '55' . $phone;
         }
-
-        return true;
+        return $phone;
     }
 }
