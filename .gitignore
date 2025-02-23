@@ -6,4 +6,4 @@
 /config.php
 
 # Logs
-/logs
+/logs/*.log

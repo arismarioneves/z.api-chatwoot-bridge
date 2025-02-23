@@ -4,46 +4,37 @@ namespace WhatsappBridge;
 
 class ChatwootHandler
 {
-    private $baseUrl;
     private $apiToken;
     private $accountId;
     private $inboxId;
+    private $baseUrl;
 
     public function __construct()
     {
-        $this->baseUrl = CHATWOOT_BASE_URL;
         $this->apiToken = CHATWOOT_API_TOKEN;
         $this->accountId = CHATWOOT_ACCOUNT_ID;
         $this->inboxId = CHATWOOT_INBOX_ID;
+        $this->baseUrl = CHATWOOT_BASE_URL;
     }
 
-    private function formatPhoneNumber($phone)
-    {
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-        if (!str_starts_with($phone, '55')) {
-            $phone = '55' . $phone;
-        }
-        return $phone;
-    }
-
-    public function sendMessage($sourceId, $message, $attachments = [])
+    public function sendMessage($sourceId, $message)
     {
         Logger::log('info', 'Preparing to send message to Chatwoot', [
             'source_id' => $sourceId,
             'message' => $message
         ]);
 
-        $formattedPhone = $this->formatPhoneNumber($sourceId);
+        $phone = $this->formatPhoneNumber($sourceId);
 
         // Busca contato existente
-        $contactId = $this->findOrCreateContact($formattedPhone);
+        $contactId = $this->findOrCreateContact($phone);
         if (!$contactId) {
             Logger::log('error', 'Failed to find or create contact');
             return false;
         }
 
         // Busca conversa existente
-        $conversationId = $this->findOrCreateConversation($formattedPhone, $contactId);
+        $conversationId = $this->findOrCreateConversation($phone, $contactId);
         if (!$conversationId) {
             Logger::log('error', 'Failed to find or create conversation');
             return false;
@@ -58,9 +49,10 @@ class ChatwootHandler
             'private' => false
         ];
 
-        if (!empty($attachments)) {
-            $data['attachments'] = $attachments;
-        }
+        Logger::log('info', 'Sending message via Chatwoot', [
+            'source_id' => $sourceId,
+            'endpoint' => $endpoint
+        ]);
 
         return $this->makeRequest('POST', $endpoint, $data);
     }
@@ -79,7 +71,7 @@ class ChatwootHandler
         }
 
         // Se não encontrou, cria novo contato
-        $createEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts";
+        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts";
 
         // Busca informações do perfil no WhatsApp
         $profileInfo = $this->getWhatsAppProfile($phone);
@@ -96,7 +88,7 @@ class ChatwootHandler
             $data['avatar_url'] = $profileInfo['avatar_url'];
         }
 
-        $response = $this->makeRequest('POST', $createEndpoint, $data);
+        $response = $this->makeRequest('POST', $endpoint, $data);
 
         return $response['id'] ?? null;
     }
@@ -107,30 +99,38 @@ class ChatwootHandler
         $searchEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
         $searchParams = http_build_query([
             'inbox_id' => $this->inboxId,
-            'status' => 'all',
-            'source_id' => $phone
+            'contact_id' => $contactId,
+            'status' => 'all'
         ]);
 
         $response = $this->makeRequest('GET', $searchEndpoint . '?' . $searchParams);
 
         if (!empty($response['data'])) {
+            // Prioriza conversas abertas
             foreach ($response['data'] as $conversation) {
-                if ($conversation['contact_inbox']['source_id'] === $phone) {
+                if ($conversation['status'] === 'open') {
                     return $conversation['id'];
                 }
             }
+            // Se não houver abertas, pega a última conversa
+            return $response['data'][0]['id'];
         }
 
         // Se não encontrou, cria nova conversa
-        $createEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
+        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
+
         $data = [
             'source_id' => $phone,
             'inbox_id' => (int)$this->inboxId,
             'contact_id' => (int)$contactId,
-            'status' => 'open'
+            'status' => 'open',
+            'additional_attributes' => [
+                'whatsapp_phone' => $phone
+            ]
         ];
 
-        $response = $this->makeRequest('POST', $createEndpoint, $data);
+        $response = $this->makeRequest('POST', $endpoint, $data);
+
         return $response['id'] ?? null;
     }
 
@@ -185,16 +185,25 @@ class ChatwootHandler
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-        if (curl_errno($ch)) {
-            Logger::log('error', 'API request failed', [
-                'url' => $url,
-                'error' => curl_error($ch),
-                'http_code' => $httpCode
-            ]);
-        }
+        Logger::log('debug', 'Chatwoot Request', [
+            'url' => $url,
+            'method' => $method,
+            'response' => $response,
+            'http_code' => $httpCode
+        ]);
 
         curl_close($ch);
 
         return json_decode($response, true);
+    }
+
+    private function formatPhoneNumber($phone)
+    {
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        // Mantém formato E.164: 55DDDNNNNNNNN
+        if (strlen($phone) === 12 && str_starts_with($phone, '55')) {
+            return $phone;
+        }
+        return '55' . ltrim($phone, '55'); // Remove duplicações
     }
 }

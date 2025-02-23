@@ -21,8 +21,7 @@ class ZAPIHandler
     {
         Logger::log('info', 'Sending message through Z-API', [
             'phone' => $phone,
-            'message' => $message,
-            'has_attachment' => !empty($attachment)
+            'message' => $message
         ]);
 
         $phone = $this->formatPhoneNumber($phone);
@@ -105,9 +104,10 @@ class ZAPIHandler
     private function formatPhoneNumber($phone)
     {
         $phone = preg_replace('/[^0-9]/', '', $phone);
-        if (!str_starts_with($phone, '55')) {
-            $phone = '55' . $phone;
+        // Mantém formato E.164: 55DDDNNNNNNNN
+        if (strlen($phone) === 12 && str_starts_with($phone, '55')) {
+            return $phone;
         }
-        return $phone;
+        return '55' . ltrim($phone, '55'); // Remove duplicações
     }
 }
