@@ -41,7 +41,7 @@ class ChatwootHandler
         }
 
         // Envia a mensagem
-        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations/{$conversationId}/messages";
+        $endpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/conversations/{$conversationId}/messages";
 
         $data = [
             'content' => $message,
@@ -60,7 +60,7 @@ class ChatwootHandler
     private function findOrCreateContact($phone)
     {
         // Primeiro, tenta buscar pelo source_id
-        $searchEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/search";
+        $searchEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/contacts/search";
         $searchResponse = $this->makeRequest('GET', $searchEndpoint . '?q=' . urlencode($phone));
 
         if (!empty($searchResponse['payload']) && count($searchResponse['payload']) > 0) {
@@ -71,7 +71,7 @@ class ChatwootHandler
         }
 
         // Se não encontrou, cria novo contato
-        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts";
+        $endpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/contacts";
 
         // Busca informações do perfil no WhatsApp
         $profileInfo = $this->getWhatsAppProfile($phone);
@@ -96,7 +96,7 @@ class ChatwootHandler
     private function findOrCreateConversation($phone, $contactId)
     {
         // Busca conversa existente
-        $searchEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
+        $searchEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/conversations";
         $searchParams = http_build_query([
             'inbox_id' => $this->inboxId,
             'contact_id' => $contactId,
@@ -112,12 +112,10 @@ class ChatwootHandler
                     return $conversation['id'];
                 }
             }
-            // Se não houver abertas, pega a última conversa
-            return $response['data'][0]['id'];
         }
 
         // Se não encontrou, cria nova conversa
-        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations";
+        $endpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/conversations";
 
         $data = [
             'source_id' => $phone,
@@ -150,7 +148,7 @@ class ChatwootHandler
         $profileInfo = $this->getWhatsAppProfile($phone);
         if (empty($profileInfo)) return;
 
-        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/{$contactId}";
+        $endpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/contacts/{$contactId}";
         $data = [
             'name' => $profileInfo['name'] ?? $phone
         ];
