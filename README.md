@@ -20,6 +20,17 @@ CHATWOOT_ACCOUNT_ID="account-id"
 CHATWOOT_INBOX_ID="inbox-id"
 ```
 
+```diff
++ CHATWOOT_BASE_URL:
+# Link da plataforma ex: https://chatwoot.aiu4.com/
++ CHATWOOT_API_TOKEN:
+# Configurações do Perfil / Token de acesso
++ CHATWOOT_ACCOUNT_ID:
+# https://chatwoot.aiu4.com/app/accounts/[2]/inbox/2
++ CHATWOOT_INBOX_ID:
+# https://chatwoot.aiu4.com/app/accounts/2/inbox/[2]
+```
+
 ## Estrutura do projeto
 
 ```
