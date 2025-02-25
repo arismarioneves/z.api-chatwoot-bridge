@@ -114,8 +114,10 @@ class ChatwootHandler
             }
         }
 
-        // Se não encontrou, cria nova conversa
-        $endpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/conversations";
+        // Se não encontrar, cria uma nova conversa
+        Logger::log('info', 'No existing conversation found, creating new one');
+
+        $createEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/conversations";
 
         $data = [
             'source_id' => $phone,
@@ -127,9 +129,25 @@ class ChatwootHandler
             ]
         ];
 
-        $response = $this->makeRequest('POST', $endpoint, $data);
+        Logger::log('debug', 'Creating conversation with data', ['data' => $data]);
 
-        return $response['id'] ?? null;
+        $response = $this->makeRequest('POST', $createEndpoint, $data);
+
+        Logger::log('debug', 'Create conversation response', ['response' => $response]);
+
+        if (isset($response['id'])) {
+            Logger::log('info', 'Successfully created new conversation', [
+                'conversation_id' => $response['id']
+            ]);
+            return $response['id'];
+        }
+
+        Logger::log('error', 'Failed to create conversation', [
+            'response' => $response,
+            'data' => $data
+        ]);
+
+        return null;
     }
 
     private function getWhatsAppProfile($phone)
@@ -170,25 +188,30 @@ class ChatwootHandler
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-        if ($method === 'POST') {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        } elseif ($method === 'PUT') {
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+        if ($data !== null) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         }
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
         Logger::log('debug', 'Chatwoot Request', [
             'url' => $url,
             'method' => $method,
-            'response' => $response,
-            'http_code' => $httpCode
+            'data' => $data
         ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        if (curl_errno($ch)) {
+            Logger::log('error', 'Curl error in makeRequest', [
+                'error' => curl_error($ch),
+                'url' => $url
+            ]);
+            curl_close($ch);
+            return null;
+        }
 
         curl_close($ch);
 

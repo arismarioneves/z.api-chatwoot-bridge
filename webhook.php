@@ -33,10 +33,15 @@ if (!$data) {
 try {
     // Identificar origem do webhook
     if (isset($data['event'])) {
-        switch ($data['event']) {
+        $event = $data['event'];
+
+        Logger::log('info', 'Handling Chatwoot event', ['event' => $event]);
+
+        switch ($event) {
             case 'message_created':
                 handleChatwootMessage($data);
                 break;
+            case 'conversation_created':
             case 'contact_updated':
             case 'conversation_updated':
             case 'message_updated':
@@ -44,7 +49,7 @@ try {
                 echo json_encode(['status' => 'ignored']);
                 break;
             default:
-                Logger::log('info', 'Unhandled Chatwoot event', ['event' => $data['event']]);
+                Logger::log('info', 'Unhandled Chatwoot event', ['event' => $event]);
                 break;
         }
     } elseif (isset($data['phone']) && isset($data['type'])) {

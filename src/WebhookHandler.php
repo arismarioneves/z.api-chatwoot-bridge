@@ -101,7 +101,6 @@ class WebhookHandler
             // Envia para o Chatwoot
             $response = $this->chatwoot->sendMessage($phone, $message, $attachments);
 
-            Logger::log('info', 'Chatwoot response', ['response' => $response]);
             return true;
         } catch (\Exception $e) {
             Logger::log('error', 'Failed to process Z-API webhook', [
