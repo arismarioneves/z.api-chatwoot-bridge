@@ -45,25 +45,58 @@ class ZAPIHandler
     {
         $phone = $this->formatPhoneNumber($phone);
 
-        // Endpoint correto para obter informações do perfil
-        $endpoint = "{$this->baseUrl}/instances/{$this->instanceId}/token/{$this->token}/profile";
+        Logger::log('info', 'Getting WhatsApp profile info', [
+            'phone' => $phone
+        ]);
 
-        $data = ['phone' => $phone];
-        $response = $this->makeRequest('GET', $endpoint, $data);
+        // Tenta obter informações do contato
+        try {
+            // Endpoint para verificar se o número existe no WhatsApp
+            $checkEndpoint = "{$this->baseUrl}/instances/{$this->instanceId}/token/{$this->token}/phone-exists";
+            $checkResponse = $this->makeRequest('GET', $checkEndpoint, ['phone' => $phone]);
 
-        if ($response && isset($response['phone'])) {
-            // Buscar foto do perfil
-            $profilePicEndpoint = "{$this->baseUrl}/instances/{$this->instanceId}/token/{$this->token}/profile-picture";
-            $picResponse = $this->makeRequest('GET', $profilePicEndpoint, ['phone' => $phone]);
+            Logger::log('debug', 'Phone exists check response', ['response' => $checkResponse]);
 
-            return [
-                'name' => $response['name'] ?? $phone,
-                'avatar_url' => $picResponse['profileImage'] ?? null,
+            // Se o número existe no WhatsApp, tenta obter mais informações
+            if ($checkResponse && isset($checkResponse['exists']) && $checkResponse['exists']) {
+                // Tenta obter o nome do perfil
+                $contactsEndpoint = "{$this->baseUrl}/instances/{$this->instanceId}/token/{$this->token}/contacts";
+                $contactsResponse = $this->makeRequest('GET', $contactsEndpoint);
+
+                $contactName = $phone;
+
+                // Procura o contato na lista de contatos
+                if ($contactsResponse && is_array($contactsResponse)) {
+                    foreach ($contactsResponse as $contact) {
+                        if (isset($contact['phone']) && $this->formatPhoneNumber($contact['phone']) === $phone) {
+                            $contactName = $contact['name'] ?? $contact['phone'] ?? $phone;
+                            break;
+                        }
+                    }
+                }
+
+                // Tenta obter a foto do perfil
+                $profilePicEndpoint = "{$this->baseUrl}/instances/{$this->instanceId}/token/{$this->token}/profile-picture";
+                $picResponse = $this->makeRequest('GET', $profilePicEndpoint, ['phone' => $phone]);
+
+                return [
+                    'name' => $contactName,
+                    'avatar_url' => $picResponse['profileImage'] ?? null,
+                    'phone' => $phone
+                ];
+            }
+        } catch (\Exception $e) {
+            Logger::log('error', 'Error getting WhatsApp profile info', [
+                'error' => $e->getMessage(),
                 'phone' => $phone
-            ];
+            ]);
         }
 
-        return null;
+        // Retorna informações básicas se não conseguir obter do WhatsApp
+        return [
+            'name' => "WhatsApp: {$phone}",
+            'phone' => $phone
+        ];
     }
 
     private function makeRequest($method, $url, $data = [])

@@ -162,11 +162,16 @@ class WebhookHandler
     }
 
     /**
-     * Format phone number by removing '+' prefix if present
+     * Format phone number to E.164 format (55DDDNNNNNNNN)
      */
     private function formatPhoneNumber($phone): string
     {
-        return ltrim($phone, '+');
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        // Mantém formato E.164: 55DDDNNNNNNNN
+        if (strlen($phone) === 12 && str_starts_with($phone, '55')) {
+            return $phone;
+        }
+        return '55' . ltrim($phone, '55'); // Remove duplicações
     }
 
     /**
