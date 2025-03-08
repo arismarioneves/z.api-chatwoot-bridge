@@ -70,9 +70,22 @@ class WebhookHandler
     {
         Logger::log('info', 'Z-API webhook received', ['data' => $payload]);
 
-        // Processa apenas mensagens recebidas
-        if ($payload['type'] !== 'ReceivedCallback') {
-            Logger::log('info', 'Ignoring non-received Z-API webhook', ['type' => $payload['type']]);
+        // Verifica se é uma mensagem enviada pelo sistema através da API
+        if (isset($payload['fromMe']) && $payload['fromMe'] && isset($payload['fromApi']) && $payload['fromApi']) {
+            Logger::log('info', 'Ignoring message sent by the system through API', [
+                'fromMe' => $payload['fromMe'] ?? false,
+                'fromApi' => $payload['fromApi'] ?? false
+            ]);
+            return false;
+        }
+
+        // Processa apenas mensagens recebidas ou enviadas diretamente pelo WhatsApp
+        if ($payload['type'] !== 'ReceivedCallback' && !(isset($payload['fromMe']) && $payload['fromMe'] && !(isset($payload['fromApi']) && $payload['fromApi']))) {
+            Logger::log('info', 'Ignoring non-received Z-API webhook', [
+                'type' => $payload['type'],
+                'fromMe' => $payload['fromMe'] ?? false,
+                'fromApi' => $payload['fromApi'] ?? false
+            ]);
             return false;
         }
 

@@ -73,10 +73,18 @@ try {
 
 function handleZAPIWebhook($data)
 {
-    if (isset($data['fromMe']) && $data['fromMe']) {
-        return; // Ignora mensagens enviadas pelo próprio sistema
+    // Verifica se a mensagem foi enviada pelo sistema através da API
+    // Ignora apenas mensagens enviadas pelo próprio sistema através da API
+    if (isset($data['fromMe']) && $data['fromMe'] && isset($data['fromApi']) && $data['fromApi']) {
+        Logger::log('info', 'Ignoring message sent by the system through API', [
+            'fromMe' => $data['fromMe'] ?? false,
+            'fromApi' => $data['fromApi'] ?? false
+        ]);
+        return;
     }
 
+    // Processa mensagens enviadas diretamente pelo WhatsApp (fromMe=true, fromApi=false)
+    // ou mensagens recebidas de terceiros (fromMe=false)
     $chatwoot = new ChatwootHandler();
     $phone = $data['phone'] ?? '';
     $message = $data['text']['message'] ?? $data['message'] ?? '';

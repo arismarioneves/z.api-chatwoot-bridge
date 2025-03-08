@@ -5,6 +5,8 @@ This is a bridge connection Z-API Chatwoot.
 [Z-API](https://www.z-api.io/)
 [Chatwoot](https://github.com/chatwoot/chatwoot)
 
+Zapiwot is a bridge connection between Z-API and Chatwoot. It allows you to connect your Z-API account with Chatwoot and send messages to your customers.
+
 ## Configuração
 
 ```
@@ -53,7 +55,7 @@ z.api-chatwoot-bridge/
 - [x] Criar conexão com Webhook
 - [x] Enviar mensagens da Z-API (contato) para o Chatwoot
 - [x] Enviar mensagens do Chatwoot para o Z-API
+- [x] Enviar mensagens do Z-API (minhas) para o Chatwoot
 
-- [ ] Enviar mensagens do Z-API (minhas) para o Chatwoot
 - [ ] Enviar anexos do Chatwoot para o Z-API
 - [ ] Enviar anexos do Z-API para o Chatwoot
