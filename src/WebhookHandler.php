@@ -102,22 +102,13 @@ class WebhookHandler
             // Determina o tipo de mensagem com base nos flags fromMe e fromApi
             $messageType = 'incoming'; // Padrão para mensagens recebidas de terceiros
 
-            // Prepara dados adicionais para a mensagem
-            $additionalData = [];
-
-            // Adiciona o messageId se disponível
-            if (isset($payload['messageId'])) {
-                $additionalData['messageId'] = $payload['messageId'];
-            }
-
             // Se a mensagem foi enviada pelo usuário diretamente do WhatsApp (não pela API)
             if (isset($payload['fromMe']) && $payload['fromMe'] && !(isset($payload['fromApi']) && $payload['fromApi'])) {
                 $messageType = 'outgoing'; // Mensagens enviadas pelo usuário devem aparecer como saída
                 Logger::log('info', 'Message sent directly from WhatsApp (not through API)', [
                     'fromMe' => $payload['fromMe'] ?? false,
                     'fromApi' => $payload['fromApi'] ?? false,
-                    'message_type' => $messageType,
-                    'messageId' => $payload['messageId'] ?? 'not set'
+                    'message_type' => $messageType
                 ]);
             }
 
@@ -125,8 +116,7 @@ class WebhookHandler
                 'phone' => $phone,
                 'message' => $message,
                 'has_attachments' => $hasAttachments,
-                'message_type' => $messageType,
-                'additional_data' => $additionalData
+                'message_type' => $messageType
             ]);
 
             // Processa anexos se houver
@@ -136,7 +126,7 @@ class WebhookHandler
             }
 
             // Envia para o Chatwoot com o tipo de mensagem apropriado
-            $response = $this->chatwoot->sendMessage($phone, $message, $attachments, $messageType, $additionalData);
+            $response = $this->chatwoot->sendMessage($phone, $message, $attachments, $messageType);
 
             return true;
         } catch (\Exception $e) {
@@ -155,87 +145,9 @@ class WebhookHandler
     {
         Logger::log('info', 'Chatwoot webhook received', ['data' => $payload]);
 
-        // Log completo do payload para debug
-        Logger::log('debug', 'Chatwoot full payload in WebhookHandler', ['payload' => $payload]);
-
-        // Log detalhado para debug
-        Logger::log('debug', 'Chatwoot webhook details', [
-            'message_type' => $payload['message_type'] ?? 'not set',
-            'private' => $payload['private'] ?? 'not set',
-            'content' => $payload['content'] ?? 'not set',
-            'content_attributes' => $payload['content_attributes'] ?? 'not set',
-            'source_id' => $payload['source_id'] ?? 'not set',
-            'has_content_attributes' => isset($payload['content_attributes']),
-            'content_attributes_type' => isset($payload['content_attributes']) ? gettype($payload['content_attributes']) : 'not set',
-            'content_attributes_json' => isset($payload['content_attributes']) ? json_encode($payload['content_attributes']) : 'not set',
-            'sender' => $payload['sender'] ?? 'not set',
-            'sender_type' => isset($payload['sender']) ? ($payload['sender']['type'] ?? 'not set') : 'not set',
-            'sender_id' => isset($payload['sender']) ? ($payload['sender']['id'] ?? 'not set') : 'not set',
-            'conversation' => $payload['conversation'] ?? 'not set',
-            'conversation_messages' => isset($payload['conversation']) && isset($payload['conversation']['messages']) ?
-                count($payload['conversation']['messages']) . ' messages' : 'not set',
-            'first_message' => isset($payload['conversation']) && isset($payload['conversation']['messages']) &&
-                !empty($payload['conversation']['messages']) ? json_encode($payload['conversation']['messages'][0]) : 'not set'
-        ]);
-
         // Processa apenas mensagens de saída que não são privadas
         if (!$this->isValidChatwootMessage($payload)) {
             return false;
-        }
-
-        // Verifica se a mensagem tem o atributo 'source' com valor 'whatsapp_direct'
-        // Isso indica que a mensagem foi enviada diretamente pelo WhatsApp e não deve ser reenviada
-        if (isset($payload['content_attributes']) &&
-            is_array($payload['content_attributes']) &&
-            isset($payload['content_attributes']['source']) &&
-            $payload['content_attributes']['source'] === 'whatsapp_direct') {
-
-            Logger::log('info', 'Ignoring message sent directly from WhatsApp', [
-                'message' => $payload['content'] ?? '',
-                'source' => $payload['content_attributes']['source']
-            ]);
-            return true;
-        }
-
-        // Verifica se a mensagem tem o messageId do WhatsApp
-        // Se tiver, significa que é uma mensagem que veio do WhatsApp e não deve ser reenviada
-        if (isset($payload['additional_attributes']) &&
-            is_array($payload['additional_attributes']) &&
-            isset($payload['additional_attributes']['messageId'])) {
-
-            Logger::log('info', 'Ignoring message with WhatsApp messageId', [
-                'message' => $payload['content'] ?? '',
-                'messageId' => $payload['additional_attributes']['messageId']
-            ]);
-            return true;
-        }
-
-        // Verifica se a mensagem tem o ID do Chatwoot
-        $chatwootMessageId = 'chatwoot_' . ($payload['id'] ?? uniqid());
-
-        // Verifica se a mensagem tem o atributo 'source_id' nulo ou vazio
-        // Isso pode indicar que a mensagem foi criada pelo nosso sistema
-        // Mas também pode ser uma mensagem enviada pelo agente no Chatwoot
-        // Vamos verificar se o sender_type é 'user' para diferenciar
-        if (empty($payload['source_id']) &&
-            isset($payload['sender']) &&
-            isset($payload['sender']['type']) &&
-            $payload['sender']['type'] === 'user') {
-
-            // Se o sender_type é 'user', é uma mensagem enviada pelo agente no Chatwoot
-            // Neste caso, devemos processar a mensagem normalmente
-            Logger::log('info', 'Processing message sent by agent in Chatwoot', [
-                'message' => $payload['content'] ?? '',
-                'sender_type' => $payload['sender']['type'] ?? 'not set',
-                'chatwootMessageId' => $chatwootMessageId
-            ]);
-        } else if (empty($payload['source_id'])) {
-            // Se não tem source_id e não é do tipo 'user', provavelmente foi criada pelo nosso sistema
-            Logger::log('info', 'Ignoring message with no source_id (likely created by our system)', [
-                'message' => $payload['content'] ?? '',
-                'sender_type' => isset($payload['sender']) ? ($payload['sender']['type'] ?? 'not set') : 'not set'
-            ]);
-            return true;
         }
 
         try {

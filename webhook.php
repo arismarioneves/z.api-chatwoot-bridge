@@ -105,109 +105,23 @@ function handleZAPIWebhook($data)
     // Determina o tipo de mensagem com base nos flags fromMe e fromApi
     $messageType = 'incoming'; // Padrão para mensagens recebidas de terceiros
 
-    // Prepara dados adicionais para a mensagem
-    $additionalData = [];
-
-    // Adiciona o messageId se disponível
-    if (isset($data['messageId'])) {
-        $additionalData['messageId'] = $data['messageId'];
-    }
-
     // Se a mensagem foi enviada pelo usuário diretamente do WhatsApp (não pela API)
     if (isset($data['fromMe']) && $data['fromMe'] && !(isset($data['fromApi']) && $data['fromApi'])) {
         $messageType = 'outgoing'; // Mensagens enviadas pelo usuário devem aparecer como saída
         Logger::log('info', 'Message sent directly from WhatsApp (not through API)', [
             'fromMe' => $data['fromMe'] ?? false,
             'fromApi' => $data['fromApi'] ?? false,
-            'message_type' => $messageType,
-            'messageId' => $data['messageId'] ?? 'not set'
+            'message_type' => $messageType
         ]);
     }
 
-    $chatwoot->sendMessage($phone, $message, $attachments, $messageType, $additionalData);
+    $chatwoot->sendMessage($phone, $message, $attachments, $messageType);
 }
 
 function handleChatwootMessage($data)
 {
-    // Log completo do payload para debug
-    Logger::log('debug', 'Chatwoot full payload', ['payload' => $data]);
-
-    // Log detalhado para debug
-    Logger::log('debug', 'Chatwoot message details', [
-        'message_type' => $data['message_type'] ?? 'not set',
-        'private' => $data['private'] ?? 'not set',
-        'content' => $data['content'] ?? 'not set',
-        'content_attributes' => $data['content_attributes'] ?? 'not set',
-        'source_id' => $data['source_id'] ?? 'not set',
-        'has_content_attributes' => isset($data['content_attributes']),
-        'content_attributes_type' => isset($data['content_attributes']) ? gettype($data['content_attributes']) : 'not set',
-        'additional_attributes' => $data['additional_attributes'] ?? 'not set',
-        'has_additional_attributes' => isset($data['additional_attributes']),
-        'additional_attributes_type' => isset($data['additional_attributes']) ? gettype($data['additional_attributes']) : 'not set',
-        'additional_attributes_json' => isset($data['additional_attributes']) ? json_encode($data['additional_attributes']) : 'not set',
-        'sender' => $data['sender'] ?? 'not set',
-        'sender_type' => isset($data['sender']) ? ($data['sender']['type'] ?? 'not set') : 'not set',
-        'sender_id' => isset($data['sender']) ? ($data['sender']['id'] ?? 'not set') : 'not set',
-        'conversation' => $data['conversation'] ?? 'not set',
-        'conversation_messages' => isset($data['conversation']) && isset($data['conversation']['messages']) ?
-            count($data['conversation']['messages']) . ' messages' : 'not set',
-        'first_message' => isset($data['conversation']) && isset($data['conversation']['messages']) &&
-            !empty($data['conversation']['messages']) ? json_encode($data['conversation']['messages'][0]) : 'not set'
-    ]);
-
     // Processa apenas mensagens de saída não-privadas
     if ($data['message_type'] !== 'outgoing' || ($data['private'] ?? false)) {
-        return;
-    }
-
-    // Verifica se a mensagem tem o atributo 'source' com valor 'whatsapp_direct'
-    // Isso indica que a mensagem foi enviada diretamente pelo WhatsApp e não deve ser reenviada
-    if (isset($data['content_attributes']) &&
-        is_array($data['content_attributes']) &&
-        isset($data['content_attributes']['source']) &&
-        $data['content_attributes']['source'] === 'whatsapp_direct') {
-
-        Logger::log('info', 'Ignoring message sent directly from WhatsApp', [
-            'message' => $data['content'] ?? '',
-            'source' => $data['content_attributes']['source']
-        ]);
-        return;
-    }
-
-    // Verifica se a mensagem tem o messageId do WhatsApp
-    // Se tiver, significa que é uma mensagem que veio do WhatsApp e não deve ser reenviada
-    if (isset($data['additional_attributes']) &&
-        is_array($data['additional_attributes']) &&
-        isset($data['additional_attributes']['messageId'])) {
-
-        Logger::log('info', 'Ignoring message with WhatsApp messageId', [
-            'message' => $data['content'] ?? '',
-            'messageId' => $data['additional_attributes']['messageId']
-        ]);
-        return;
-    }
-
-    // Verifica se a mensagem tem o atributo 'source_id' nulo ou vazio
-    // Isso pode indicar que a mensagem foi criada pelo nosso sistema
-    // Mas também pode ser uma mensagem enviada pelo agente no Chatwoot
-    // Vamos verificar se o sender_type é 'user' para diferenciar
-    if (empty($data['source_id']) &&
-        isset($data['sender']) &&
-        isset($data['sender']['type']) &&
-        $data['sender']['type'] === 'user') {
-
-        // Se o sender_type é 'user', é uma mensagem enviada pelo agente no Chatwoot
-        // Neste caso, devemos processar a mensagem normalmente
-        Logger::log('info', 'Processing message sent by agent in Chatwoot', [
-            'message' => $data['content'] ?? '',
-            'sender_type' => $data['sender']['type'] ?? 'not set'
-        ]);
-    } else if (empty($data['source_id'])) {
-        // Se não tem source_id e não é do tipo 'user', provavelmente foi criada pelo nosso sistema
-        Logger::log('info', 'Ignoring message with no source_id (likely created by our system)', [
-            'message' => $data['content'] ?? '',
-            'sender_type' => isset($data['sender']) ? ($data['sender']['type'] ?? 'not set') : 'not set'
-        ]);
         return;
     }
 
