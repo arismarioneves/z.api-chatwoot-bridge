@@ -108,6 +108,13 @@ function handleZAPIWebhook($data)
     // Se a mensagem foi enviada pelo usuário diretamente do WhatsApp (não pela API)
     if (isset($data['fromMe']) && $data['fromMe'] && !(isset($data['fromApi']) && $data['fromApi'])) {
         $messageType = 'outgoing'; // Mensagens enviadas pelo usuário devem aparecer como saída
+
+        // Adiciona o caractere invisível zero-width space corretamente
+        $zeroWidthSpace = html_entity_decode('&#8203;', ENT_QUOTES, 'UTF-8');
+        // Ou alternativamente: $zeroWidthSpace = "\xE2\x80\x8B";
+
+        $message = $message . $zeroWidthSpace;
+
         Logger::log('info', 'Message sent directly from WhatsApp (not through API)', [
             'fromMe' => $data['fromMe'] ?? false,
             'fromApi' => $data['fromApi'] ?? false,
@@ -128,6 +135,15 @@ function handleChatwootMessage($data)
     $zapi = new ZAPIHandler();
     $phone = $data['conversation']['contact_inbox']['source_id'] ?? '';
     $message = $data['content'] ?? '';
+
+    // Verifica se a mensagem termina com o caractere invisível
+    $zeroWidthSpace = html_entity_decode('&#8203;', ENT_QUOTES, 'UTF-8');
+    // Ou alternativamente: $zeroWidthSpace = "\xE2\x80\x8B";
+
+    if (mb_substr($message, -1) === $zeroWidthSpace) {
+        Logger::log('info', 'Mensagem detectada com marcador invisível - ignorando para evitar loop');
+        return;
+    }
 
     if (empty($phone) || empty($message)) {
         Logger::log('error', 'Missing required data for sending message');
