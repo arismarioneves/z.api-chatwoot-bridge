@@ -45,3 +45,15 @@ z.api-chatwoot-bridge/
 │   └── app.log
 └── composer.json
 ```
+
+# Roadmap
+
+- [x] Criar conexão com Z-API
+- [x] Criar conexão com Chatwoot
+- [x] Criar conexão com Webhook
+- [x] Enviar mensagens da Z-API (contato) para o Chatwoot
+- [x] Enviar mensagens do Chatwoot para o Z-API
+
+- [ ] Enviar mensagens do Z-API (minhas) para o Chatwoot
+- [ ] Enviar anexos do Chatwoot para o Z-API
+- [ ] Enviar anexos do Z-API para o Chatwoot

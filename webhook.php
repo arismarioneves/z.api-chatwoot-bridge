@@ -12,13 +12,19 @@ header('Content-Type: application/json');
 
 // Verifica o método da requisição
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    die(json_encode(['error' => 'Method not allowed']));
+    // http_response_code(405);
+    // die(json_encode(['error' => 'Webhook :]']));
+    die(json_encode(['status' => 'success', 'message' => 'Webhook :]']));
 }
 
 // Recebe o payload
 $input = file_get_contents('php://input');
 $data = json_decode($input, true);
+
+// Se for um grupo, ignora a mensagem
+if ($data['isGroup']) {
+    exit;
+}
 
 // Log do payload recebido
 Logger::log('info', 'Raw webhook received', ['payload' => $data]);
