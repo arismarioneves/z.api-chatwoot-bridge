@@ -102,13 +102,22 @@ class WebhookHandler
             // Determina o tipo de mensagem com base nos flags fromMe e fromApi
             $messageType = 'incoming'; // Padrão para mensagens recebidas de terceiros
 
+            // Prepara dados adicionais para a mensagem
+            $additionalData = [];
+
+            // Adiciona o messageId se disponível
+            if (isset($payload['messageId'])) {
+                $additionalData['messageId'] = $payload['messageId'];
+            }
+
             // Se a mensagem foi enviada pelo usuário diretamente do WhatsApp (não pela API)
             if (isset($payload['fromMe']) && $payload['fromMe'] && !(isset($payload['fromApi']) && $payload['fromApi'])) {
                 $messageType = 'outgoing'; // Mensagens enviadas pelo usuário devem aparecer como saída
                 Logger::log('info', 'Message sent directly from WhatsApp (not through API)', [
                     'fromMe' => $payload['fromMe'] ?? false,
                     'fromApi' => $payload['fromApi'] ?? false,
-                    'message_type' => $messageType
+                    'message_type' => $messageType,
+                    'messageId' => $payload['messageId'] ?? 'not set'
                 ]);
             }
 
@@ -116,7 +125,8 @@ class WebhookHandler
                 'phone' => $phone,
                 'message' => $message,
                 'has_attachments' => $hasAttachments,
-                'message_type' => $messageType
+                'message_type' => $messageType,
+                'additional_data' => $additionalData
             ]);
 
             // Processa anexos se houver
@@ -126,7 +136,7 @@ class WebhookHandler
             }
 
             // Envia para o Chatwoot com o tipo de mensagem apropriado
-            $response = $this->chatwoot->sendMessage($phone, $message, $attachments, $messageType);
+            $response = $this->chatwoot->sendMessage($phone, $message, $attachments, $messageType, $additionalData);
 
             return true;
         } catch (\Exception $e) {
@@ -145,6 +155,18 @@ class WebhookHandler
     {
         Logger::log('info', 'Chatwoot webhook received', ['data' => $payload]);
 
+        // Log detalhado para debug
+        Logger::log('debug', 'Chatwoot webhook details', [
+            'message_type' => $payload['message_type'] ?? 'not set',
+            'private' => $payload['private'] ?? 'not set',
+            'content' => $payload['content'] ?? 'not set',
+            'content_attributes' => $payload['content_attributes'] ?? 'not set',
+            'source_id' => $payload['source_id'] ?? 'not set',
+            'has_content_attributes' => isset($payload['content_attributes']),
+            'content_attributes_type' => isset($payload['content_attributes']) ? gettype($payload['content_attributes']) : 'not set',
+            'content_attributes_json' => isset($payload['content_attributes']) ? json_encode($payload['content_attributes']) : 'not set'
+        ]);
+
         // Processa apenas mensagens de saída que não são privadas
         if (!$this->isValidChatwootMessage($payload)) {
             return false;
@@ -153,12 +175,26 @@ class WebhookHandler
         // Verifica se a mensagem tem o atributo 'source' com valor 'whatsapp_direct'
         // Isso indica que a mensagem foi enviada diretamente pelo WhatsApp e não deve ser reenviada
         if (isset($payload['content_attributes']) &&
+            is_array($payload['content_attributes']) &&
             isset($payload['content_attributes']['source']) &&
             $payload['content_attributes']['source'] === 'whatsapp_direct') {
 
             Logger::log('info', 'Ignoring message sent directly from WhatsApp', [
                 'message' => $payload['content'] ?? '',
                 'source' => $payload['content_attributes']['source']
+            ]);
+            return true;
+        }
+
+        // Verifica se a mensagem tem o messageId do WhatsApp
+        // Se tiver, significa que é uma mensagem que veio do WhatsApp e não deve ser reenviada
+        if (isset($payload['additional_attributes']) &&
+            is_array($payload['additional_attributes']) &&
+            isset($payload['additional_attributes']['messageId'])) {
+
+            Logger::log('info', 'Ignoring message with WhatsApp messageId', [
+                'message' => $payload['content'] ?? '',
+                'messageId' => $payload['additional_attributes']['messageId']
             ]);
             return true;
         }

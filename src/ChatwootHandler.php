@@ -17,13 +17,14 @@ class ChatwootHandler
         $this->baseUrl = CHATWOOT_BASE_URL;
     }
 
-    public function sendMessage($sourceId, $message, $attachments = [], $messageType = 'incoming')
+    public function sendMessage($sourceId, $message, $attachments = [], $messageType = 'incoming', $additionalData = [])
     {
         Logger::log('info', 'Preparing to send message to Chatwoot', [
             'source_id' => $sourceId,
             'message' => $message,
             'has_attachments' => !empty($attachments),
-            'message_type' => $messageType
+            'message_type' => $messageType,
+            'additional_data' => $additionalData
         ]);
 
         $phone = $this->formatPhoneNumber($sourceId);
@@ -53,6 +54,21 @@ class ChatwootHandler
                 'source' => $messageType === 'outgoing' ? 'whatsapp_direct' : 'whatsapp_api'
             ]
         ];
+
+        // Adiciona atributos adicionais se houver
+        if (!empty($additionalData)) {
+            if (!isset($data['additional_attributes'])) {
+                $data['additional_attributes'] = [];
+            }
+
+            foreach ($additionalData as $key => $value) {
+                $data['additional_attributes'][$key] = $value;
+            }
+
+            Logger::log('info', 'Added additional attributes to message', [
+                'additional_attributes' => $data['additional_attributes']
+            ]);
+        }
 
         // Adiciona anexos se houver
         if (!empty($attachments)) {
