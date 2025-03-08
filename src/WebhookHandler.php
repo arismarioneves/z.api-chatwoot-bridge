@@ -99,10 +99,24 @@ class WebhookHandler
             // Verifica se há anexos
             $hasAttachments = $this->checkForAttachments($payload);
 
+            // Determina o tipo de mensagem com base nos flags fromMe e fromApi
+            $messageType = 'incoming'; // Padrão para mensagens recebidas de terceiros
+
+            // Se a mensagem foi enviada pelo usuário diretamente do WhatsApp (não pela API)
+            if (isset($payload['fromMe']) && $payload['fromMe'] && !(isset($payload['fromApi']) && $payload['fromApi'])) {
+                $messageType = 'outgoing'; // Mensagens enviadas pelo usuário devem aparecer como saída
+                Logger::log('info', 'Message sent directly from WhatsApp (not through API)', [
+                    'fromMe' => $payload['fromMe'] ?? false,
+                    'fromApi' => $payload['fromApi'] ?? false,
+                    'message_type' => $messageType
+                ]);
+            }
+
             Logger::log('info', 'Sending to Chatwoot', [
                 'phone' => $phone,
                 'message' => $message,
-                'has_attachments' => $hasAttachments
+                'has_attachments' => $hasAttachments,
+                'message_type' => $messageType
             ]);
 
             // Processa anexos se houver
@@ -111,8 +125,8 @@ class WebhookHandler
                 $attachments = $this->processAttachments($payload);
             }
 
-            // Envia para o Chatwoot
-            $response = $this->chatwoot->sendMessage($phone, $message, $attachments);
+            // Envia para o Chatwoot com o tipo de mensagem apropriado
+            $response = $this->chatwoot->sendMessage($phone, $message, $attachments, $messageType);
 
             return true;
         } catch (\Exception $e) {

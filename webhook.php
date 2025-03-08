@@ -102,7 +102,20 @@ function handleZAPIWebhook($data)
         $message = '[Mídia enviada]';
     }
 
-    $chatwoot->sendMessage($phone, $message, $attachments);
+    // Determina o tipo de mensagem com base nos flags fromMe e fromApi
+    $messageType = 'incoming'; // Padrão para mensagens recebidas de terceiros
+
+    // Se a mensagem foi enviada pelo usuário diretamente do WhatsApp (não pela API)
+    if (isset($data['fromMe']) && $data['fromMe'] && !(isset($data['fromApi']) && $data['fromApi'])) {
+        $messageType = 'outgoing'; // Mensagens enviadas pelo usuário devem aparecer como saída
+        Logger::log('info', 'Message sent directly from WhatsApp (not through API)', [
+            'fromMe' => $data['fromMe'] ?? false,
+            'fromApi' => $data['fromApi'] ?? false,
+            'message_type' => $messageType
+        ]);
+    }
+
+    $chatwoot->sendMessage($phone, $message, $attachments, $messageType);
 }
 
 function handleChatwootMessage($data)

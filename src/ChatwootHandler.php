@@ -17,12 +17,13 @@ class ChatwootHandler
         $this->baseUrl = CHATWOOT_BASE_URL;
     }
 
-    public function sendMessage($sourceId, $message, $attachments = [])
+    public function sendMessage($sourceId, $message, $attachments = [], $messageType = 'incoming')
     {
         Logger::log('info', 'Preparing to send message to Chatwoot', [
             'source_id' => $sourceId,
             'message' => $message,
-            'has_attachments' => !empty($attachments)
+            'has_attachments' => !empty($attachments),
+            'message_type' => $messageType
         ]);
 
         $phone = $this->formatPhoneNumber($sourceId);
@@ -46,7 +47,7 @@ class ChatwootHandler
 
         $data = [
             'content' => $message,
-            'message_type' => 'incoming',
+            'message_type' => $messageType, // Usa o tipo de mensagem especificado
             'private' => false
         ];
 
