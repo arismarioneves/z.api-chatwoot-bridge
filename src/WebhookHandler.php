@@ -150,6 +150,19 @@ class WebhookHandler
             return false;
         }
 
+        // Verifica se a mensagem tem o atributo 'source' com valor 'whatsapp_direct'
+        // Isso indica que a mensagem foi enviada diretamente pelo WhatsApp e não deve ser reenviada
+        if (isset($payload['content_attributes']) &&
+            isset($payload['content_attributes']['source']) &&
+            $payload['content_attributes']['source'] === 'whatsapp_direct') {
+
+            Logger::log('info', 'Ignoring message sent directly from WhatsApp', [
+                'message' => $payload['content'] ?? '',
+                'source' => $payload['content_attributes']['source']
+            ]);
+            return true;
+        }
+
         try {
             $conversation = $payload['conversation'];
             $sourceId = $conversation['contact_inbox']['source_id'];

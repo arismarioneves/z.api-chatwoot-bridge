@@ -48,7 +48,10 @@ class ChatwootHandler
         $data = [
             'content' => $message,
             'message_type' => $messageType, // Usa o tipo de mensagem especificado
-            'private' => false
+            'private' => false,
+            'content_attributes' => [
+                'source' => $messageType === 'outgoing' ? 'whatsapp_direct' : 'whatsapp_api'
+            ]
         ];
 
         // Adiciona anexos se houver

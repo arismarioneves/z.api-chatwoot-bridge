@@ -125,6 +125,19 @@ function handleChatwootMessage($data)
         return;
     }
 
+    // Verifica se a mensagem tem o atributo 'source' com valor 'whatsapp_direct'
+    // Isso indica que a mensagem foi enviada diretamente pelo WhatsApp e não deve ser reenviada
+    if (isset($data['content_attributes']) &&
+        isset($data['content_attributes']['source']) &&
+        $data['content_attributes']['source'] === 'whatsapp_direct') {
+
+        Logger::log('info', 'Ignoring message sent directly from WhatsApp', [
+            'message' => $data['content'] ?? '',
+            'source' => $data['content_attributes']['source']
+        ]);
+        return;
+    }
+
     $zapi = new ZAPIHandler();
     $phone = $data['conversation']['contact_inbox']['source_id'] ?? '';
     $message = $data['content'] ?? '';
