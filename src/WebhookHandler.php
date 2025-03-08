@@ -79,16 +79,6 @@ class WebhookHandler
             return false;
         }
 
-        // Verifica se a mensagem já foi processada
-        $messageId = $payload['messageId'] ?? '';
-        if (!empty($messageId) && function_exists('isMessageProcessed') && isMessageProcessed($messageId)) {
-            Logger::log('info', 'Ignoring already processed message', [
-                'messageId' => $messageId,
-                'message' => $payload['text']['message'] ?? $payload['message'] ?? ''
-            ]);
-            return false;
-        }
-
         // Processa apenas mensagens recebidas ou enviadas diretamente pelo WhatsApp
         if ($payload['type'] !== 'ReceivedCallback' && !(isset($payload['fromMe']) && $payload['fromMe'] && !(isset($payload['fromApi']) && $payload['fromApi']))) {
             Logger::log('info', 'Ignoring non-received Z-API webhook', [
@@ -116,19 +106,8 @@ class WebhookHandler
             $additionalData = [];
 
             // Adiciona o messageId se disponível
-            if (!empty($messageId)) {
-                $additionalData['messageId'] = $messageId;
-
-                // Marca a mensagem como processada se a função existir
-                if (function_exists('markMessageAsProcessed')) {
-                    markMessageAsProcessed($messageId, [
-                        'phone' => $phone,
-                        'message' => $message,
-                        'fromMe' => $payload['fromMe'] ?? false,
-                        'fromApi' => $payload['fromApi'] ?? false,
-                        'timestamp' => time()
-                    ]);
-                }
+            if (isset($payload['messageId'])) {
+                $additionalData['messageId'] = $payload['messageId'];
             }
 
             // Se a mensagem foi enviada pelo usuário diretamente do WhatsApp (não pela API)
@@ -138,7 +117,7 @@ class WebhookHandler
                     'fromMe' => $payload['fromMe'] ?? false,
                     'fromApi' => $payload['fromApi'] ?? false,
                     'message_type' => $messageType,
-                    'messageId' => $messageId
+                    'messageId' => $payload['messageId'] ?? 'not set'
                 ]);
             }
 
@@ -231,17 +210,8 @@ class WebhookHandler
             return true;
         }
 
-        // Gera um ID único para a mensagem do Chatwoot
+        // Verifica se a mensagem tem o ID do Chatwoot
         $chatwootMessageId = 'chatwoot_' . ($payload['id'] ?? uniqid());
-
-        // Verifica se a mensagem já foi processada
-        if (function_exists('isMessageProcessed') && isMessageProcessed($chatwootMessageId)) {
-            Logger::log('info', 'Ignoring already processed Chatwoot message', [
-                'chatwootMessageId' => $chatwootMessageId,
-                'message' => $payload['content'] ?? ''
-            ]);
-            return true;
-        }
 
         // Verifica se a mensagem tem o atributo 'source_id' nulo ou vazio
         // Isso pode indicar que a mensagem foi criada pelo nosso sistema
@@ -276,20 +246,9 @@ class WebhookHandler
             // Remove o prefixo '+' do número de telefone
             $phone = $this->formatPhoneNumber($sourceId);
 
-            // Marca a mensagem como processada antes de enviá-la
-            if (function_exists('markMessageAsProcessed')) {
-                markMessageAsProcessed($chatwootMessageId, [
-                    'phone' => $phone,
-                    'message' => $message,
-                    'sender_type' => isset($payload['sender']) ? ($payload['sender']['type'] ?? 'not set') : 'not set',
-                    'timestamp' => time()
-                ]);
-            }
-
             Logger::log('info', 'Sending to Z-API', [
                 'phone' => $phone,
-                'message' => $message,
-                'chatwootMessageId' => $chatwootMessageId
+                'message' => $message
             ]);
 
             // Envia a mensagem via Z-API

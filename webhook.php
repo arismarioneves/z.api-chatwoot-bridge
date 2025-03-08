@@ -7,51 +7,6 @@ use WhatsappBridge\Logger;
 use WhatsappBridge\ZAPIHandler;
 use WhatsappBridge\ChatwootHandler;
 
-// Função para verificar se uma mensagem já foi processada
-function isMessageProcessed($messageId) {
-    $cacheFile = __DIR__ . '/logs/processed_messages.json';
-
-    // Cria o arquivo se não existir
-    if (!file_exists($cacheFile)) {
-        file_put_contents($cacheFile, json_encode([]));
-        return false;
-    }
-
-    // Lê o cache
-    $processedMessages = json_decode(file_get_contents($cacheFile), true);
-
-    // Verifica se a mensagem já foi processada
-    return isset($processedMessages[$messageId]);
-}
-
-// Função para marcar uma mensagem como processada
-function markMessageAsProcessed($messageId, $data = []) {
-    $cacheFile = __DIR__ . '/logs/processed_messages.json';
-
-    // Lê o cache atual
-    $processedMessages = [];
-    if (file_exists($cacheFile)) {
-        $processedMessages = json_decode(file_get_contents($cacheFile), true);
-    }
-
-    // Adiciona a mensagem ao cache
-    $processedMessages[$messageId] = [
-        'timestamp' => time(),
-        'data' => $data
-    ];
-
-    // Limpa mensagens antigas (mais de 24 horas)
-    $oneDayAgo = time() - 86400;
-    foreach ($processedMessages as $id => $info) {
-        if ($info['timestamp'] < $oneDayAgo) {
-            unset($processedMessages[$id]);
-        }
-    }
-
-    // Salva o cache
-    file_put_contents($cacheFile, json_encode($processedMessages));
-}
-
 // Configura headers
 header('Content-Type: application/json');
 
@@ -128,16 +83,6 @@ function handleZAPIWebhook($data)
         return;
     }
 
-    // Verifica se a mensagem já foi processada
-    $messageId = $data['messageId'] ?? '';
-    if (!empty($messageId) && isMessageProcessed($messageId)) {
-        Logger::log('info', 'Ignoring already processed message', [
-            'messageId' => $messageId,
-            'message' => $data['text']['message'] ?? $data['message'] ?? ''
-        ]);
-        return;
-    }
-
     // Processa mensagens enviadas diretamente pelo WhatsApp (fromMe=true, fromApi=false)
     // ou mensagens recebidas de terceiros (fromMe=false)
     $chatwoot = new ChatwootHandler();
@@ -164,17 +109,8 @@ function handleZAPIWebhook($data)
     $additionalData = [];
 
     // Adiciona o messageId se disponível
-    if (!empty($messageId)) {
-        $additionalData['messageId'] = $messageId;
-
-        // Marca a mensagem como processada
-        markMessageAsProcessed($messageId, [
-            'phone' => $phone,
-            'message' => $message,
-            'fromMe' => $data['fromMe'] ?? false,
-            'fromApi' => $data['fromApi'] ?? false,
-            'timestamp' => time()
-        ]);
+    if (isset($data['messageId'])) {
+        $additionalData['messageId'] = $data['messageId'];
     }
 
     // Se a mensagem foi enviada pelo usuário diretamente do WhatsApp (não pela API)
@@ -184,7 +120,7 @@ function handleZAPIWebhook($data)
             'fromMe' => $data['fromMe'] ?? false,
             'fromApi' => $data['fromApi'] ?? false,
             'message_type' => $messageType,
-            'messageId' => $messageId
+            'messageId' => $data['messageId'] ?? 'not set'
         ]);
     }
 
@@ -240,27 +176,13 @@ function handleChatwootMessage($data)
 
     // Verifica se a mensagem tem o messageId do WhatsApp
     // Se tiver, significa que é uma mensagem que veio do WhatsApp e não deve ser reenviada
-    $messageId = null;
     if (isset($data['additional_attributes']) &&
         is_array($data['additional_attributes']) &&
         isset($data['additional_attributes']['messageId'])) {
 
-        $messageId = $data['additional_attributes']['messageId'];
         Logger::log('info', 'Ignoring message with WhatsApp messageId', [
             'message' => $data['content'] ?? '',
-            'messageId' => $messageId
-        ]);
-        return;
-    }
-
-    // Gera um ID único para a mensagem do Chatwoot
-    $chatwootMessageId = 'chatwoot_' . ($data['id'] ?? uniqid());
-
-    // Verifica se a mensagem já foi processada
-    if (isMessageProcessed($chatwootMessageId)) {
-        Logger::log('info', 'Ignoring already processed Chatwoot message', [
-            'chatwootMessageId' => $chatwootMessageId,
-            'message' => $data['content'] ?? ''
+            'messageId' => $data['additional_attributes']['messageId']
         ]);
         return;
     }
@@ -278,8 +200,7 @@ function handleChatwootMessage($data)
         // Neste caso, devemos processar a mensagem normalmente
         Logger::log('info', 'Processing message sent by agent in Chatwoot', [
             'message' => $data['content'] ?? '',
-            'sender_type' => $data['sender']['type'] ?? 'not set',
-            'chatwootMessageId' => $chatwootMessageId
+            'sender_type' => $data['sender']['type'] ?? 'not set'
         ]);
     } else if (empty($data['source_id'])) {
         // Se não tem source_id e não é do tipo 'user', provavelmente foi criada pelo nosso sistema
@@ -298,14 +219,6 @@ function handleChatwootMessage($data)
         Logger::log('error', 'Missing required data for sending message');
         return;
     }
-
-    // Marca a mensagem como processada antes de enviá-la
-    markMessageAsProcessed($chatwootMessageId, [
-        'phone' => $phone,
-        'message' => $message,
-        'sender_type' => isset($data['sender']) ? ($data['sender']['type'] ?? 'not set') : 'not set',
-        'timestamp' => time()
-    ]);
 
     $zapi->sendMessage($phone, $message);
 }
