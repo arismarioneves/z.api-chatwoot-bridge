@@ -199,6 +199,15 @@ class WebhookHandler
             return true;
         }
 
+        // Verifica se a mensagem tem o atributo 'source_id' nulo ou vazio
+        // Isso indica que a mensagem foi criada pelo nosso sistema e não deve ser reenviada
+        if (empty($payload['source_id'])) {
+            Logger::log('info', 'Ignoring message with no source_id (created by our system)', [
+                'message' => $payload['content'] ?? ''
+            ]);
+            return true;
+        }
+
         try {
             $conversation = $payload['conversation'];
             $sourceId = $conversation['contact_inbox']['source_id'];

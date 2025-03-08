@@ -141,7 +141,10 @@ function handleChatwootMessage($data)
         'additional_attributes' => $data['additional_attributes'] ?? 'not set',
         'has_additional_attributes' => isset($data['additional_attributes']),
         'additional_attributes_type' => isset($data['additional_attributes']) ? gettype($data['additional_attributes']) : 'not set',
-        'additional_attributes_json' => isset($data['additional_attributes']) ? json_encode($data['additional_attributes']) : 'not set'
+        'additional_attributes_json' => isset($data['additional_attributes']) ? json_encode($data['additional_attributes']) : 'not set',
+        'sender' => $data['sender'] ?? 'not set',
+        'sender_type' => isset($data['sender']) ? ($data['sender']['type'] ?? 'not set') : 'not set',
+        'sender_id' => isset($data['sender']) ? ($data['sender']['id'] ?? 'not set') : 'not set'
     ]);
 
     // Processa apenas mensagens de saída não-privadas
@@ -176,12 +179,13 @@ function handleChatwootMessage($data)
         return;
     }
 
-    // Verifica se a mensagem tem o atributo 'source_id' nulo
-    // Isso pode indicar que a mensagem foi enviada diretamente do Chatwoot
+    // Verifica se a mensagem tem o atributo 'source_id' nulo ou vazio
+    // Isso indica que a mensagem foi criada pelo nosso sistema e não deve ser reenviada
     if (empty($data['source_id'])) {
-        Logger::log('info', 'Message has no source_id, likely sent from Chatwoot', [
+        Logger::log('info', 'Ignoring message with no source_id (created by our system)', [
             'message' => $data['content'] ?? ''
         ]);
+        return;
     }
 
     $zapi = new ZAPIHandler();
