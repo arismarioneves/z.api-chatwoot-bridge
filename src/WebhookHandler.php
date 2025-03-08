@@ -200,10 +200,25 @@ class WebhookHandler
         }
 
         // Verifica se a mensagem tem o atributo 'source_id' nulo ou vazio
-        // Isso indica que a mensagem foi criada pelo nosso sistema e não deve ser reenviada
-        if (empty($payload['source_id'])) {
-            Logger::log('info', 'Ignoring message with no source_id (created by our system)', [
-                'message' => $payload['content'] ?? ''
+        // Isso pode indicar que a mensagem foi criada pelo nosso sistema
+        // Mas também pode ser uma mensagem enviada pelo agente no Chatwoot
+        // Vamos verificar se o sender_type é 'user' para diferenciar
+        if (empty($payload['source_id']) &&
+            isset($payload['sender']) &&
+            isset($payload['sender']['type']) &&
+            $payload['sender']['type'] === 'user') {
+
+            // Se o sender_type é 'user', é uma mensagem enviada pelo agente no Chatwoot
+            // Neste caso, devemos processar a mensagem normalmente
+            Logger::log('info', 'Processing message sent by agent in Chatwoot', [
+                'message' => $payload['content'] ?? '',
+                'sender_type' => $payload['sender']['type'] ?? 'not set'
+            ]);
+        } else if (empty($payload['source_id'])) {
+            // Se não tem source_id e não é do tipo 'user', provavelmente foi criada pelo nosso sistema
+            Logger::log('info', 'Ignoring message with no source_id (likely created by our system)', [
+                'message' => $payload['content'] ?? '',
+                'sender_type' => isset($payload['sender']) ? ($payload['sender']['type'] ?? 'not set') : 'not set'
             ]);
             return true;
         }
