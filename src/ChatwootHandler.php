@@ -74,23 +74,25 @@ class ChatwootHandler
             'phone' => $phone
         ]);
 
-        // Tenta busca direta por contatos
-        $listEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/contacts";
-        $listResponse = $this->makeRequest('GET', $listEndpoint);
+        // Formata o número no formato E.164 (com o + no início)
+        $e164Phone = '+' . $phone;
 
-        Logger::log('debug', 'Contact list response', ['response' => $listResponse]);
+        // Busca mais específica usando o número de telefone formatado
+        $searchEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/contacts/search";
+        $searchResponse = $this->makeRequest('GET', $searchEndpoint . '?q=' . urlencode($e164Phone));
 
-        // Procura o contato pelo source_id ou phone_number
-        if (!empty($listResponse['payload'])) {
-            foreach ($listResponse['payload'] as $contact) {
+        Logger::log('debug', 'Contact search response', ['response' => $searchResponse]);
+
+        // Verificar explicitamente se o número de telefone corresponde
+        if (!empty($searchResponse['payload'])) {
+            foreach ($searchResponse['payload'] as $contact) {
                 if (
-                    (isset($contact['source_id']) && $contact['source_id'] === $phone) ||
-                    (isset($contact['phone_number']) && $contact['phone_number'] === $phone)
+                    isset($contact['phone_number']) &&
+                    $this->formatPhoneNumber($contact['phone_number']) === $phone
                 ) {
-                    Logger::log('info', 'Found existing contact', [
+                    Logger::log('info', 'Found contact with exact phone number match', [
                         'contact_id' => $contact['id'],
-                        'source_id' => $contact['source_id'] ?? 'not set',
-                        'phone_number' => $contact['phone_number'] ?? 'not set'
+                        'phone_number' => $contact['phone_number']
                     ]);
 
                     // Atualiza o perfil do contato existente
@@ -100,21 +102,43 @@ class ChatwootHandler
             }
         }
 
-        // Tenta busca genérica como fallback
-        $searchEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/contacts/search";
-        $searchResponse = $this->makeRequest('GET', $searchEndpoint . '?q=' . urlencode($phone));
+        // Tenta busca direta por contatos como fallback
+        $listEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/contacts";
+        $listResponse = $this->makeRequest('GET', $listEndpoint);
 
-        Logger::log('debug', 'Contact search response', ['response' => $searchResponse]);
+        Logger::log('debug', 'Contact list response', ['response' => $listResponse]);
 
-        if (!empty($searchResponse['payload']) && count($searchResponse['payload']) > 0) {
-            $contact = $searchResponse['payload'][0];
-            Logger::log('info', 'Found contact via search', [
-                'contact_id' => $contact['id']
-            ]);
+        // Busca mais rigorosa por correspondência exata de telefone
+        if (!empty($listResponse['payload'])) {
+            foreach ($listResponse['payload'] as $contact) {
+                // Verifica se o source_id corresponde exatamente ao número
+                if (isset($contact['source_id']) && $contact['source_id'] === $phone) {
+                    Logger::log('info', 'Found existing contact by source_id', [
+                        'contact_id' => $contact['id'],
+                        'source_id' => $contact['source_id']
+                    ]);
 
-            // Atualiza o perfil do contato existente
-            $this->updateContactProfile($contact['id'], $phone);
-            return $contact['id'];
+                    // Atualiza o perfil do contato existente
+                    $this->updateContactProfile($contact['id'], $phone);
+                    return $contact['id'];
+                }
+
+                // Verifica se o phone_number corresponde ao número formatado
+                if (isset($contact['phone_number'])) {
+                    $contactPhone = $this->formatPhoneNumber($contact['phone_number']);
+                    if ($contactPhone === $phone) {
+                        Logger::log('info', 'Found existing contact by phone_number', [
+                            'contact_id' => $contact['id'],
+                            'phone_number' => $contact['phone_number'],
+                            'formatted_phone' => $contactPhone
+                        ]);
+
+                        // Atualiza o perfil do contato existente
+                        $this->updateContactProfile($contact['id'], $phone);
+                        return $contact['id'];
+                    }
+                }
+            }
         }
 
         // Se não encontrou, cria novo contato
@@ -123,20 +147,26 @@ class ChatwootHandler
         // Busca informações do perfil no WhatsApp
         $profileInfo = $this->getWhatsAppProfile($phone);
 
-        // Formata o número no formato E.164 (com o + no início)
-        $e164Phone = '+' . $phone;
-
+        // Identificador único e consistente para o contato
         $data = [
             'inbox_id' => (int)$this->inboxId,
-            'name' => $profileInfo['name'] ?? $phone,
+            'name' => $profileInfo['name'] ?? "WhatsApp: {$phone}",
             'phone_number' => $e164Phone,
-            'identifier' => $phone,
-            'source_id' => $phone
+            'identifier' => "whatsapp:{$phone}", // Identificador único com prefixo
+            'source_id' => $phone,
+            'custom_attributes' => [
+                'whatsapp_phone' => $phone,
+                'whatsapp_identifier' => $phone
+            ]
         ];
 
         if (!empty($profileInfo['avatar_url'])) {
             $data['avatar_url'] = $profileInfo['avatar_url'];
         }
+
+        Logger::log('info', 'Creating new contact with data', [
+            'data' => $data
+        ]);
 
         $response = $this->makeRequest('POST', $endpoint, $data);
 
@@ -183,14 +213,15 @@ class ChatwootHandler
             ]);
         }
 
-        // Tenta uma abordagem alternativa - criar contato com dados mínimos
+        // Melhorar a abordagem alternativa com identificador mais específico
         Logger::log('info', 'Trying alternative approach to create contact with minimal data');
 
         $minimalData = [
             'inbox_id' => (int)$this->inboxId,
             'name' => "WhatsApp: {$phone}",
-            'phone_number' => '+' . $phone,
-            'source_id' => $phone
+            'phone_number' => $e164Phone,
+            'source_id' => $phone,
+            'identifier' => "wa:{$phone}" // Identificador alternativo
         ];
 
         $retryResponse = $this->makeRequest('POST', $endpoint, $minimalData);
@@ -212,21 +243,30 @@ class ChatwootHandler
 
         // Se chegou aqui, verifica se o erro é "Phone number has already been taken"
         if (isset($retryResponse['message']) && $retryResponse['message'] === 'Phone number has already been taken') {
-            // Tenta buscar o contato recém-criado pelo número de telefone
-            Logger::log('info', 'Contact already exists, trying to find it by phone number');
+            // Tenta buscar o contato recém-criado pelo número de telefone exato
+            Logger::log('info', 'Contact already exists, trying to find it by exact phone number');
 
-            // Busca novamente por contatos
+            // Busca mais precisa por número de telefone
             $searchEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/contacts/search";
-            $searchResponse = $this->makeRequest('GET', $searchEndpoint . '?q=' . urlencode('+' . $phone));
+            $searchResponse = $this->makeRequest('GET', $searchEndpoint . '?q=' . urlencode($e164Phone));
 
             Logger::log('debug', 'Contact search response after creation attempt', ['response' => $searchResponse]);
 
-            if (!empty($searchResponse['payload']) && count($searchResponse['payload']) > 0) {
-                $contact = $searchResponse['payload'][0];
-                Logger::log('info', 'Found contact after creation attempt', [
-                    'contact_id' => $contact['id']
-                ]);
-                return $contact['id'];
+            if (!empty($searchResponse['payload'])) {
+                foreach ($searchResponse['payload'] as $contact) {
+                    // Verifica correspondência exata do número de telefone
+                    if (
+                        isset($contact['phone_number']) &&
+                        ($this->formatPhoneNumber($contact['phone_number']) === $phone ||
+                            $contact['phone_number'] === $e164Phone)
+                    ) {
+                        Logger::log('info', 'Found contact by exact phone match after creation attempt', [
+                            'contact_id' => $contact['id'],
+                            'phone_number' => $contact['phone_number']
+                        ]);
+                        return $contact['id'];
+                    }
+                }
             }
         }
 
@@ -245,7 +285,8 @@ class ChatwootHandler
         $searchParams = http_build_query([
             'inbox_id' => $this->inboxId,
             'contact_id' => $contactId,
-            'status' => 'all'
+            'status' => 'all',
+            'source_id' => $phone
         ]);
 
         $response = $this->makeRequest('GET', $searchEndpoint . '?' . $searchParams);
@@ -293,34 +334,46 @@ class ChatwootHandler
                 'conversation' => isset($conversations[0]) ? json_encode(array_keys($conversations[0])) : 'null'
             ]);
 
-            // Prioriza conversas abertas
-            foreach ($conversations as $conversation) {
-                if (isset($conversation['status']) && $conversation['status'] === 'open' && isset($conversation['id'])) {
-                    Logger::log('info', 'Using existing open conversation', [
-                        'conversation_id' => $conversation['id']
-                    ]);
-                    return $conversation['id'];
-                }
-            }
+            // Filtra apenas conversas que correspondem ao número de telefone
+            $matchingConversations = array_filter($conversations, function ($conversation) use ($phone) {
+                return (isset($conversation['meta']['sender']['phone_number']) &&
+                    $this->formatPhoneNumber($conversation['meta']['sender']['phone_number']) === $phone) ||
+                    (isset($conversation['meta']['additional_attributes']['whatsapp_phone']) &&
+                        $conversation['meta']['additional_attributes']['whatsapp_phone'] === $phone);
+            });
 
-            // Se não encontrou conversa aberta, usa a primeira conversa encontrada
-            if (isset($conversations[0])) {
-                if (isset($conversations[0]['id'])) {
-                    $firstConversation = $conversations[0];
-                    Logger::log('info', 'Using first existing conversation (not open)', [
-                        'conversation_id' => $firstConversation['id'],
-                        'status' => $firstConversation['status'] ?? 'unknown'
-                    ]);
-                    return $firstConversation['id'];
+            if (!empty($matchingConversations)) {
+                $matchingConversations = array_values($matchingConversations); // Reindexar array
+
+                // Prioriza conversas abertas
+                foreach ($conversations as $conversation) {
+                    if (isset($conversation['status']) && $conversation['status'] === 'open' && isset($conversation['id'])) {
+                        Logger::log('info', 'Using existing open conversation', [
+                            'conversation_id' => $conversation['id']
+                        ]);
+                        return $conversation['id'];
+                    }
+                }
+
+                // Se não encontrou conversa aberta, usa a primeira conversa encontrada
+                if (isset($conversations[0])) {
+                    if (isset($conversations[0]['id'])) {
+                        $firstConversation = $conversations[0];
+                        Logger::log('info', 'Using first existing conversation (not open)', [
+                            'conversation_id' => $firstConversation['id'],
+                            'status' => $firstConversation['status'] ?? 'unknown'
+                        ]);
+                        return $firstConversation['id'];
+                    } else {
+                        Logger::log('error', 'First conversation does not have an ID', [
+                            'first_conversation' => $conversations[0]
+                        ]);
+                    }
                 } else {
-                    Logger::log('error', 'First conversation does not have an ID', [
-                        'first_conversation' => $conversations[0]
+                    Logger::log('error', 'Found conversations array but it is empty or invalid', [
+                        'conversations_count' => count($conversations)
                     ]);
                 }
-            } else {
-                Logger::log('error', 'Found conversations array but it is empty or invalid', [
-                    'conversations_count' => count($conversations)
-                ]);
             }
 
             // Se chegou aqui, não conseguiu acessar os dados da conversa
@@ -336,12 +389,13 @@ class ChatwootHandler
         $createEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/conversations";
 
         $data = [
-            'source_id' => $phone,
+            'source_id' => 'whatsapp:' . $phone,
             'inbox_id' => (int)$this->inboxId,
             'contact_id' => (int)$contactId,
             'status' => 'open',
             'additional_attributes' => [
-                'whatsapp_phone' => $phone
+                'whatsapp_phone' => $phone,
+                'phone_identifier' => $phone
             ]
         ];
 
