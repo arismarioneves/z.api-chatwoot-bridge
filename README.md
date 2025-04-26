@@ -13,10 +13,10 @@ Zapiwot is a bridge connection between Z-API and Chatwoot. It allows you to conn
 # Z-API
 ZAPI_INSTANCE_ID="instance-id"
 ZAPI_TOKEN="token"
-ZAPI_BASE_URL="https://api.z-api.io"
+ZAPI_BASE_URL="https://api.z-api.io/"
 
 # Chatwoot
-CHATWOOT_BASE_URL="https://chatwoot.com"
+CHATWOOT_BASE_URL="https://***/"
 CHATWOOT_API_TOKEN="token"
 CHATWOOT_ACCOUNT_ID="account-id"
 CHATWOOT_INBOX_ID="inbox-id"
@@ -24,13 +24,13 @@ CHATWOOT_INBOX_ID="inbox-id"
 
 ```diff
 + CHATWOOT_BASE_URL:
-# Link da plataforma ex: https://chatwoot.aiu4.com/
+# Link da plataforma ex: https://chatwoot.com/
 + CHATWOOT_API_TOKEN:
 # Configurações do Perfil / Token de acesso
 + CHATWOOT_ACCOUNT_ID:
-# https://chatwoot.aiu4.com/app/accounts/[2]/inbox/2
+# https://chatwoot.com/app/accounts/[2]/inbox/1
 + CHATWOOT_INBOX_ID:
-# https://chatwoot.aiu4.com/app/accounts/2/inbox/[2]
+# https://chatwoot.com/app/accounts/2/inbox/[1]
 ```
 
 ## Estrutura do projeto
