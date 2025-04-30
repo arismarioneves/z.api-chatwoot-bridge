@@ -1,13 +1,12 @@
 # z.api-chatwoot-bridge
 
-This is a bridge connection Z-API Chatwoot.
-
-[Z-API](https://www.z-api.io/)
-[Chatwoot](https://github.com/chatwoot/chatwoot)
+This is a bridge connection [Z-API](https://www.z-api.io/) \ [Chatwoot](https://github.com/chatwoot/chatwoot).
 
 Zapiwot is a bridge connection between Z-API and Chatwoot. It allows you to connect your Z-API account with Chatwoot and send messages to your customers.
 
 ## Configuração
+
+### Configuração do webhook
 
 ```
 # Z-API
@@ -32,6 +31,14 @@ CHATWOOT_INBOX_ID="inbox-id"
 + CHATWOOT_INBOX_ID:
 # https://chatwoot.com/app/accounts/2/inbox/[1]
 ```
+
+### Configuração no Chatwoot
+
+Configurações / Caixas de Entrada / Adicionar Caixa de Entrada
+ - Adicionar o nome do canal (número de telefone)
+ - URL do webhook
+
+> Nota: Não precisa configurar o webhook no **Integrações** do Chatwoot, apenas na caixa de entrada.
 
 ## Estrutura do projeto
 

@@ -305,6 +305,7 @@ class ChatwootHandler
 
         // Verifica diferentes estruturas de resposta possíveis
         $conversations = null;
+        $foundConversation = null; // Variável para armazenar a conversa a ser usada
 
         // Estrutura 1: { "data": [ ... ] }
         if (!empty($response['data']) && is_array($response['data']) && !isset($response['data']['payload'])) {
@@ -320,6 +321,14 @@ class ChatwootHandler
                 'count' => count($conversations)
             ]);
         }
+        // Estrutura 3: Direct array response (Less common but possible)
+        else if (is_array($response) && !empty($response) && isset($response[0]['id'])) {
+            $conversations = $response;
+            Logger::log('info', 'Found conversations (direct array structure)', [
+                'count' => count($conversations)
+            ]);
+        }
+
         // Estrutura 3: { "meta": {...}, "id": X, ... } (resposta de conversa única)
         else if (isset($response['id']) && isset($response['meta'])) {
             // É uma única conversa
@@ -330,61 +339,55 @@ class ChatwootHandler
         }
 
         if ($conversations && count($conversations) > 0) {
-            Logger::log('debug', 'First conversation in array', [
-                'conversation' => isset($conversations[0]) ? json_encode(array_keys($conversations[0])) : 'null'
-            ]);
+            Logger::log('info', 'Processing found conversations', ['count' => count($conversations)]);
 
-            // Filtra apenas conversas que correspondem ao número de telefone
-            $matchingConversations = array_filter($conversations, function ($conversation) use ($phone) {
-                return (isset($conversation['meta']['sender']['phone_number']) &&
-                    $this->formatPhoneNumber($conversation['meta']['sender']['phone_number']) === $phone) ||
-                    (isset($conversation['meta']['additional_attributes']['whatsapp_phone']) &&
-                        $conversation['meta']['additional_attributes']['whatsapp_phone'] === $phone);
-            });
-
-            if (!empty($matchingConversations)) {
-                $matchingConversations = array_values($matchingConversations); // Reindexar array
-
-                // Prioriza conversas abertas
-                foreach ($conversations as $conversation) {
-                    if (isset($conversation['status']) && $conversation['status'] === 'open' && isset($conversation['id'])) {
-                        Logger::log('info', 'Using existing open conversation', [
-                            'conversation_id' => $conversation['id']
+            // Prioriza conversas abertas que pertencem ao contato correto
+            foreach ($conversations as $conversation) {
+                if (isset($conversation['id']) && isset($conversation['status']) && $conversation['status'] === 'open') {
+                    // Verifica se a conversa pertence ao contato correto
+                    if (isset($conversation['meta']['sender']['id']) && $conversation['meta']['sender']['id'] == $contactId) {
+                        Logger::log('info', 'Using existing open conversation for contact', [
+                            'conversation_id' => $conversation['id'],
+                            'contact_id_match' => $contactId
                         ]);
-                        return $conversation['id'];
+                        $foundConversation = $conversation;
+                        break; // Encontrou uma aberta, para de procurar
                     }
-                }
-
-                // Se não encontrou conversa aberta, usa a primeira conversa encontrada
-                if (isset($conversations[0])) {
-                    if (isset($conversations[0]['id'])) {
-                        $firstConversation = $conversations[0];
-                        Logger::log('info', 'Using first existing conversation (not open)', [
-                            'conversation_id' => $firstConversation['id'],
-                            'status' => $firstConversation['status'] ?? 'unknown'
-                        ]);
-                        return $firstConversation['id'];
-                    } else {
-                        Logger::log('error', 'First conversation does not have an ID', [
-                            'first_conversation' => $conversations[0]
-                        ]);
-                    }
-                } else {
-                    Logger::log('error', 'Found conversations array but it is empty or invalid', [
-                        'conversations_count' => count($conversations)
-                    ]);
                 }
             }
 
-            // Se chegou aqui, não conseguiu acessar os dados da conversa
-            Logger::log('error', 'Found conversations but could not access conversation data', [
-                'response' => $response
-            ]);
-            // Continua para criar uma nova conversa
+            // Se não encontrou conversa aberta, usa a primeira conversa encontrada para este contato
+            if (!$foundConversation) {
+                foreach ($conversations as $conversation) {
+                    // Verifica se a conversa pertence ao contato correto
+                    if (isset($conversation['id']) && isset($conversation['meta']['sender']['id']) && $conversation['meta']['sender']['id'] == $contactId) {
+                        Logger::log('info', 'Using first existing (non-open) conversation found for contact', [
+                            'conversation_id' => $conversation['id'],
+                            'status' => $conversation['status'] ?? 'unknown',
+                            'contact_id_match' => $contactId
+                        ]);
+                        $foundConversation = $conversation;
+                        break; // Encontrou a primeira relevante
+                    }
+                }
+            }
+
+            if ($foundConversation && isset($foundConversation['id'])) {
+                return $foundConversation['id'];
+            } else {
+                Logger::log('warning', 'Found conversations, but none matched the contact ID or structure was unexpected.', [
+                    'contact_id' => $contactId,
+                    'first_conversation_keys' => !empty($conversations) ? json_encode(array_keys($conversations[0])) : 'empty'
+                ]);
+                // Prossegue para criar uma nova conversa se nenhuma existente adequada foi confirmada
+            }
+        } else {
+            Logger::log('info', 'No existing conversations found matching search criteria.');
+            // Prossegue para criar uma nova conversa
         }
 
-        // Se não encontrar, cria uma nova conversa
-        Logger::log('info', 'No existing conversation found, creating new one');
+        // Se não encontrar ou não confirmar uma conversa existente, cria uma nova conversa
+        Logger::log('info', 'Proceeding to create a new conversation.');
 
         $createEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/conversations";
 
@@ -410,6 +413,11 @@ class ChatwootHandler
                 'conversation_id' => $response['id']
             ]);
             return $response['id'];
+        } elseif (isset($response['payload']) && isset($response['payload']['id'])) { // Outra estrutura possível na criação
+            Logger::log('info', 'Successfully created new conversation (payload structure)', [
+                'conversation_id' => $response['payload']['id']
+            ]);
+            return $response['payload']['id'];
         }
 
         Logger::log('error', 'Failed to create conversation', [
