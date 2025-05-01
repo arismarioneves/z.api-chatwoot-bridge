@@ -49,9 +49,15 @@ z.api-chatwoot-bridge/
 │   ├── ZAPIHandler.php
 │   ├── ChatwootHandler.php
 │   └── Logger.php
-├── webhook.php
 ├── logs/
+│   ├── index.php
 │   └── app.log
+├── index.php
+├── webhook.php
+├── config.php
+├── README.md
+├── .gitignore
+├── .htaccess
 └── composer.json
 ```
 
@@ -66,3 +72,7 @@ z.api-chatwoot-bridge/
 
 - [ ] Enviar anexos do Chatwoot para o Z-API
 - [ ] Enviar anexos do Z-API para o Chatwoot
+
+- [ ] Obter informações do contato no Z-API (nome, foto, etc)
+
+- [ ] Copatibilidade com conversas em grupo

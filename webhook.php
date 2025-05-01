@@ -1,154 +1,73 @@
 <?php
 
-include 'vendor/autoload.php';
-include 'config.php';
+// Define BASE_PATH para facilitar a inclusão de arquivos
+define('BASE_PATH', __DIR__);
+
+require_once BASE_PATH . '/vendor/autoload.php';
+require_once BASE_PATH . '/config.php';
 
 use WhatsappBridge\Logger;
-use WhatsappBridge\ZAPIHandler;
-use WhatsappBridge\ChatwootHandler;
+use WhatsappBridge\WebhookHandler;
 
 // Configura headers
 header('Content-Type: application/json');
 
 // Verifica o método da requisição
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    // http_response_code(405);
-    // die(json_encode(['error' => 'Webhook :]']));
-    die(json_encode(['status' => 'success', 'message' => 'Webhook :]']));
+    http_response_code(405); // Method Not Allowed
+    die(json_encode(['error' => 'Method Not Allowed. Only POST is accepted.']));
 }
 
 // Recebe o payload
 $input = file_get_contents('php://input');
 $data = json_decode($input, true);
 
-// Se for um grupo, ignora a mensagem
-if ($data['isGroup']) {
+// Valida o payload JSON inicial
+if (json_last_error() !== JSON_ERROR_NONE) {
+    Logger::log('error', 'Invalid JSON payload received', ['input' => $input, 'json_error' => json_last_error_msg()]);
+    http_response_code(400);
+    die(json_encode(['error' => 'Invalid JSON payload: ' . json_last_error_msg()]));
+}
+
+// Se não for um array após o decode, é inválido
+if (!is_array($data)) {
+    Logger::log('error', 'Payload is not a valid JSON object/array', ['input' => $input]);
+    http_response_code(400);
+    die(json_encode(['error' => 'Invalid payload format.']));
+}
+
+// Se for uma mensagem de grupo do Z-API, ignora
+if (isset($data['isGroup']) && $data['isGroup'] === true) {
+    Logger::log('info', 'Ignoring group message from Z-API', ['payload_keys' => array_keys($data)]);
+    echo json_encode(['status' => 'ignored', 'reason' => 'Group message']);
     exit;
 }
 
-// Log do payload recebido
-Logger::log('info', 'Raw webhook received', ['payload' => $data]);
-
-// Valida o payload
-if (!$data) {
-    Logger::log('error', 'Invalid payload', ['input' => $input]);
-    http_response_code(400);
-    die(json_encode(['error' => 'Invalid payload']));
-}
-
 try {
-    // Identificar origem do webhook
-    if (isset($data['event'])) {
-        $event = $data['event'];
+    // Instancia o handler principal
+    $handler = new WebhookHandler();
 
-        Logger::log('info', 'Handling Chatwoot event', ['event' => $event]);
+    // Delega o processamento para o handler
+    $processed = $handler->handle($data);
 
-        switch ($event) {
-            case 'message_created':
-                handleChatwootMessage($data);
-                break;
-            case 'conversation_created':
-            case 'contact_updated':
-            case 'conversation_updated':
-            case 'message_updated':
-                // Ignorar estes eventos
-                echo json_encode(['status' => 'ignored']);
-                break;
-            default:
-                Logger::log('info', 'Unhandled Chatwoot event', ['event' => $event]);
-                break;
-        }
-    } elseif (isset($data['phone']) && isset($data['type'])) {
-        handleZAPIWebhook($data);
+    if ($processed) {
+        echo json_encode(['status' => 'success']);
     } else {
-        throw new Exception('Unrecognized webhook format');
+        // Se handle retornar false, significa que foi ignorado intencionalmente
+        echo json_encode(['status' => 'ignored']);
     }
-
-    echo json_encode(['status' => 'success']);
-} catch (Exception $e) {
-    Logger::log('error', 'Webhook processing failed', ['error' => $e->getMessage()]);
-    http_response_code(500);
+} catch (\InvalidArgumentException $e) {
+    // Erro específico para formato não reconhecido ou dados faltando
+    Logger::log('warning', 'Webhook processing failed: Invalid Argument', ['error' => $e->getMessage(), 'payload_keys' => array_keys($data)]);
+    http_response_code(400); // Bad Request
     echo json_encode(['error' => $e->getMessage()]);
-}
-
-function handleZAPIWebhook($data)
-{
-    // Verifica se a mensagem foi enviada pelo sistema através da API
-    // Ignora apenas mensagens enviadas pelo próprio sistema através da API
-    if (isset($data['fromMe']) && $data['fromMe'] && isset($data['fromApi']) && $data['fromApi']) {
-        Logger::log('info', 'Ignoring message sent by the system through API', [
-            'fromMe' => $data['fromMe'] ?? false,
-            'fromApi' => $data['fromApi'] ?? false
-        ]);
-        return;
-    }
-
-    // Processa mensagens enviadas diretamente pelo WhatsApp (fromMe=true, fromApi=false)
-    // ou mensagens recebidas de terceiros (fromMe=false)
-    $chatwoot = new ChatwootHandler();
-    $phone = $data['phone'] ?? '';
-    $message = $data['text']['message'] ?? $data['message'] ?? '';
-
-    // Processa anexos se houver
-    $attachments = [];
-    if (isset($data['media'])) {
-        $attachments[] = [
-            'url' => $data['media'],
-            'type' => $data['type'] ?? 'file'
-        ];
-    }
-
-    if (empty($message) && !empty($attachments)) {
-        $message = '[Mídia enviada]';
-    }
-
-    // Determina o tipo de mensagem com base nos flags fromMe e fromApi
-    $messageType = 'incoming'; // Padrão para mensagens recebidas de terceiros
-
-    // Se a mensagem foi enviada pelo usuário diretamente do WhatsApp (não pela API)
-    if (isset($data['fromMe']) && $data['fromMe'] && !(isset($data['fromApi']) && $data['fromApi'])) {
-        $messageType = 'outgoing'; // Mensagens enviadas pelo usuário devem aparecer como saída
-
-        // Adiciona o caractere invisível zero-width space corretamente
-        $zeroWidthSpace = html_entity_decode('&#8203;', ENT_QUOTES, 'UTF-8');
-        // Ou alternativamente: $zeroWidthSpace = "\xE2\x80\x8B";
-
-        $message = $message . $zeroWidthSpace;
-
-        Logger::log('info', 'Message sent directly from WhatsApp (not through API)', [
-            'fromMe' => $data['fromMe'] ?? false,
-            'fromApi' => $data['fromApi'] ?? false,
-            'message_type' => $messageType
-        ]);
-    }
-
-    $chatwoot->sendMessage($phone, $message, $attachments, $messageType);
-}
-
-function handleChatwootMessage($data)
-{
-    // Processa apenas mensagens de saída não-privadas
-    if ($data['message_type'] !== 'outgoing' || ($data['private'] ?? false)) {
-        return;
-    }
-
-    $zapi = new ZAPIHandler();
-    $phone = $data['conversation']['contact_inbox']['source_id'] ?? '';
-    $message = $data['content'] ?? '';
-
-    // Verifica se a mensagem termina com o caractere invisível
-    $zeroWidthSpace = html_entity_decode('&#8203;', ENT_QUOTES, 'UTF-8');
-    // Ou alternativamente: $zeroWidthSpace = "\xE2\x80\x8B";
-
-    if (mb_substr($message, -1) === $zeroWidthSpace) {
-        Logger::log('info', 'Mensagem detectada com marcador invisível - ignorando para evitar loop');
-        return;
-    }
-
-    if (empty($phone) || empty($message)) {
-        Logger::log('error', 'Missing required data for sending message');
-        return;
-    }
-
-    $zapi->sendMessage($phone, $message);
+} catch (\Exception $e) {
+    // Erros gerais durante o processamento
+    Logger::log('error', 'Webhook processing failed: General Exception', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString(), // Loga o stack trace para debug
+        'payload_keys' => array_keys($data)
+    ]);
+    http_response_code(500); // Internal Server Error
+    echo json_encode(['error' => 'Internal Server Error: ' . $e->getMessage()]);
 }
