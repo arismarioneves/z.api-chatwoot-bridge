@@ -1,5 +1,18 @@
 <?php
 
+$token = $_GET['token'] ?? null;
+
+if (!$token) {
+    echo json_encode(['status' => 'error', 'message' => 'Chat Webhook :/ - Token não informado.']);
+    exit;
+}
+
+// Token Botzilla: e6204e721f
+if ($token !== 'e6204e721f') {
+    echo json_encode(['status' => 'error', 'message' => 'Chat Webhook :/ - Token inválido.']);
+    exit;
+}
+
 // Define BASE_PATH para facilitar a inclusão de arquivos
 define('BASE_PATH', __DIR__);
 
