@@ -150,9 +150,9 @@ class ChatwootHandler
         // Identificador único e consistente para o contato
         $data = [
             'inbox_id' => (int)$this->inboxId,
-            'name' => $profileInfo['name'] ?? "WhatsApp: {$phone}",
+            'name' => $profileInfo['name'] ?? $phone,
             'phone_number' => $e164Phone,
-            'identifier' => "whatsapp:{$phone}", // Identificador único com prefixo
+            'identifier' => $phone,
             'source_id' => $phone,
             'custom_attributes' => [
                 'whatsapp_phone' => $phone,
@@ -218,10 +218,10 @@ class ChatwootHandler
 
         $minimalData = [
             'inbox_id' => (int)$this->inboxId,
-            'name' => "WhatsApp: {$phone}",
+            'name' => $phone,
             'phone_number' => $e164Phone,
             'source_id' => $phone,
-            'identifier' => "wa:{$phone}" // Identificador alternativo
+            'identifier' => $phone
         ];
 
         $retryResponse = $this->makeRequest('POST', $endpoint, $minimalData);
@@ -392,7 +392,7 @@ class ChatwootHandler
         $createEndpoint = "{$this->baseUrl}api/v1/accounts/{$this->accountId}/conversations";
 
         $data = [
-            'source_id' => 'whatsapp:' . $phone,
+            'source_id' => $phone,
             'inbox_id' => (int)$this->inboxId,
             'contact_id' => (int)$contactId,
             'status' => 'open',
@@ -442,7 +442,7 @@ class ChatwootHandler
 
                 // Retorna informações básicas quando a API falha
                 return [
-                    'name' => "WhatsApp: {$phone}",
+                    'name' => $phone,
                     'phone' => $phone
                 ];
             }
@@ -453,7 +453,7 @@ class ChatwootHandler
 
             // Retorna informações básicas em caso de exceção
             return [
-                'name' => "WhatsApp: {$phone}",
+                'name' => $phone,
                 'phone' => $phone
             ];
         }
@@ -510,14 +510,6 @@ class ChatwootHandler
             curl_close($ch);
             return null;
         }
-
-        // Log da resposta HTTP
-        Logger::log('debug', 'Chatwoot Response', [
-            'url' => $url,
-            'method' => $method,
-            'http_code' => $httpCode,
-            'raw_response' => substr($response, 0, 1000) // Limita o tamanho do log
-        ]);
 
         curl_close($ch);
 

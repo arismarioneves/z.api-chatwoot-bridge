@@ -94,7 +94,7 @@ class ZAPIHandler
 
         // Retorna informações básicas se não conseguir obter do WhatsApp
         return [
-            'name' => "WhatsApp: {$phone}",
+            'name' => $phone,
             'phone' => $phone
         ];
     }
