@@ -33,11 +33,17 @@ CHATWOOT_INBOX_ID="inbox-id"
 # https://chatwoot.com/app/accounts/2/inbox/[1]
 ```
 
+### Configurações Z-API
+
+Instâncias Web / Webhooks e configurações gerais
+- Configure o webhook adicionando a URL do Zapiwoot no campo **Ao receber**
+- Marque a opção **Notificar as mensagens enviadas por mim também**
+
 ### Configuração no Chatwoot
 
 Configurações / Caixas de Entrada / Adicionar Caixa de Entrada
- - Adicionar o nome do canal (número de telefone)
- - URL do webhook
+ - Adicionar o nome do canal
+ - Adicione a URL do Zapiwoot no campo **URL do webhook**
 
 > Nota: Não precisa configurar o webhook no **Integrações** do Chatwoot, apenas na caixa de entrada.
 
