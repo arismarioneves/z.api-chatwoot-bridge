@@ -12,6 +12,7 @@ Zapiwot is a bridge connection between Z-API and Chatwoot. It allows you to conn
 # Z-API
 ZAPI_INSTANCE_ID="instance-id"
 ZAPI_TOKEN="token"
+ZAPI_SECURITY_TOKEN="security-token"
 ZAPI_BASE_URL="https://api.z-api.io/"
 
 # Chatwoot
