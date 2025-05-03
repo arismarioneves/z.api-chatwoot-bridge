@@ -51,21 +51,23 @@ Configurações / Caixas de Entrada / Adicionar Caixa de Entrada
 
 ```
 z.api-chatwoot-bridge/
+├── logs/
+│   ├── index.php
+│   └── app.log
 ├── src/
+│   ├── Utils/
+│   │   └── Formatter.php
 │   ├── WebhookHandler.php
 │   ├── ZAPIHandler.php
 │   ├── ChatwootHandler.php
 │   └── Logger.php
-├── logs/
-│   ├── index.php
-│   └── app.log
 ├── index.php
 ├── webhook.php
 ├── config.php
-├── README.md
+├── composer.json
 ├── .gitignore
 ├── .htaccess
-└── composer.json
+└── README.md
 ```
 
 # Roadmap
