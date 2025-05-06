@@ -63,12 +63,6 @@ class WebhookHandler
     {
         Logger::log('info', 'Z-API webhook identified', ['type' => $payload['type'] ?? 'N/A']);
 
-        // Ignora mensagens enviadas pelo próprio sistema via API para evitar loop
-        if (isset($payload['fromMe'], $payload['fromApi']) && $payload['fromMe'] && $payload['fromApi']) {
-            Logger::log('info', 'Ignoring Z-API message: Sent by system via API (fromMe=true, fromApi=true).');
-            return false; // Ignorado
-        }
-
         // Extrai dados essenciais
         $phone = Formatter::formatPhoneNumber($payload['phone'] ?? $payload['chatId'] ?? null); // 'chatId' pode conter o número
         $messageText = $payload['text']['message'] ?? $payload['message'] ?? ''; // Z-API pode usar 'message' ou 'text.message'
@@ -95,9 +89,13 @@ class WebhookHandler
         if (isset($payload['fromMe']) && $payload['fromMe']) {
             // Mensagem enviada pelo usuário diretamente no WhatsApp (não via API, já filtrado acima)
             $messageType = 'outgoing';
-            // Adiciona marcador invisível para evitar loop quando o Chatwoot reenviar
-            $messageText .= self::INVISIBLE_MARKER;
             Logger::log('info', 'Z-API message marked as outgoing (sent directly from WhatsApp)', ['phone' => $phone]);
+        }
+
+        // Verifica se a mensagem veio originalmente do Chatwoot ou da API (contém o marcador invisível)
+        if (str_ends_with($messageText, self::INVISIBLE_MARKER)) {
+            Logger::log('info', 'Ignoring Z-API message: Detected invisible marker (origin Chatwoot outgoing).');
+            return false; // Evita duplicação de mensagens
         }
 
         Logger::log('info', 'Processing Z-API message to send to Chatwoot', [
@@ -140,7 +138,6 @@ class WebhookHandler
 
         // Extrai dados
         $sourceId = $payload['conversation']['contact_inbox']['source_id'] ?? null;
-        $messageContent = $payload['content'] ?? '';
         $chatwootAttachments = $payload['attachments'] ?? [];
 
         if (empty($sourceId)) {
@@ -149,15 +146,6 @@ class WebhookHandler
         }
 
         $phone = Formatter::formatPhoneNumber($sourceId);
-
-        // Verifica se a mensagem veio originalmente do Z-API (contém o marcador invisível)
-        if (str_ends_with($messageContent, self::INVISIBLE_MARKER)) {
-            Logger::log('info', 'Ignoring Chatwoot message: Detected invisible marker (origin Z-API outgoing).');
-            return false; // Evita loop
-        }
-
-        // Remove o marcador se acidentalmente presente (embora a verificação acima deva pegar)
-        $messageToSend = rtrim($messageContent, self::INVISIBLE_MARKER);
 
         Logger::log('info', 'Processing Chatwoot message to send to Z-API', [
             'phone' => $phone,

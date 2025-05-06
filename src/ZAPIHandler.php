@@ -94,7 +94,6 @@ class ZAPIHandler
         return $this->makeRequest('POST', $endpoint, $data);
     }
 
-
     /** Obtém informações do perfil do WhatsApp (nome, foto) */
     public function getProfileInfo(string $phone): array
     {

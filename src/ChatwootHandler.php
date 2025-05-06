@@ -121,6 +121,7 @@ class ChatwootHandler
                 }
             }
         }
+
         Logger::log('info', 'Contact not found via search, attempting creation.', ['phone' => $phone]);
 
         // 2. Se não encontrou, cria o contato
@@ -330,7 +331,6 @@ class ChatwootHandler
         }
         return $uploadedAttachmentIds;
     }
-
 
     /** Executa a requisição cURL para a API Chatwoot */
     private function makeRequest(string $method, string $url, ?array $data = null, bool $isMultipart = false): ?array
