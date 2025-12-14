@@ -12,12 +12,13 @@ class Logger
 
     private static function getInstance(): MonologLogger
     {
-        $log_file = 'app';
-
         if (self::$logger === null) {
+            $logFile = 'app';
+            $logDir = ROOT . 'arquivos/logs/';
+
             self::$logger = new MonologLogger('whatsapp-bridge');
             $formatter = new LineFormatter(null, null, true, true);
-            $handler = new StreamHandler(__DIR__ . '/logs/' . $log_file . '.log', MonologLogger::DEBUG);
+            $handler = new StreamHandler($logDir . $logFile . '.log', MonologLogger::DEBUG);
             $handler->setFormatter($formatter);
             self::$logger->pushHandler($handler);
         }
