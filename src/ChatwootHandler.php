@@ -27,7 +27,6 @@ class ChatwootHandler
     public function sendMessage(string $sourceId, string $message, array $attachments = [], string $messageType = 'incoming'): ?array
     {
         $phone = Formatter::formatPhoneNumber($sourceId);
-        Logger::log('info', 'Sending to Chatwoot', ['phone' => $phone, 'type' => $messageType]);
 
         try {
             $contactId = $this->findOrCreateContact($phone);
@@ -209,5 +208,19 @@ class ChatwootHandler
         }
 
         return $decodedResponse;
+    }
+
+    public function updateContact(string $phone, array $attributes): bool
+    {
+        $contactId = $this->findOrCreateContact($phone);
+        if (!$contactId) {
+            return false;
+        }
+
+        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/{$contactId}";
+        $this->makeRequest('PUT', $endpoint, $attributes);
+
+        Logger::log('info', 'Updated contact', ['phone' => $phone, 'attributes' => $attributes]);
+        return true;
     }
 }

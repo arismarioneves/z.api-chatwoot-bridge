@@ -56,6 +56,25 @@ class WebhookHandler
             'fromApi' => $fromApi
         ]);
 
+        // Atualizar foto do perfil se disponível
+        $photoUrl = $payload['photo'] ?? null;
+        $senderName = $payload['senderName'] ?? null;
+
+        if ($photoUrl && $senderName) {
+            $imageContent = @file_get_contents($photoUrl);
+            if ($imageContent) {
+                $dir = ROOT . 'arquivos/perfil/';
+                $filename = $phone . '.png';
+                file_put_contents($dir . $filename, $imageContent);
+
+                $localUrl = HOST . 'arquivos/perfil/' . $filename;
+                $this->chatwoot->updateContact($phone, [
+                    'name' => $senderName,
+                    'avatar_url' => $localUrl
+                ]);
+            }
+        }
+
         if ($fromMe && $fromApi) {
             return false;
         }

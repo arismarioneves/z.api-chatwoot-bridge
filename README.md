@@ -4,7 +4,7 @@ Esta é uma ponte de conexão entre [Z-API](https://www.z-api.io/) e [Chatwoot](
 
 Zapiwot é uma ponte entre Z-API e Chatwoot. Ele permite que você conecte sua conta Z-API ao Chatwoot e envie mensagens para seus clientes.
 
-🟢 [Versão 1.5]
+🟢 [Versão 1.6]
 
 ## Instalação
 
@@ -108,10 +108,7 @@ zapiwoot/
 - [x] Criar conexão com Chatwoot
 - [x] Enviar mensagens de texto da Z-API para o Chatwoot
 - [x] Enviar mensagens de texto do Chatwoot para o Z-API
-
-## Próximas Funcionalidades
-
-- [ ] Obter informações do contato no Chatwoot (nome, foto, etc)
+- [x] Exibir informações do contato (nome e foto)
 - [ ] Suportar o envio de anexos (imagens, vídeos, documentos, áudios)
 - [ ] Compatibilidade com conversas em grupo
 - [ ] Sincronizar mensagens enviadas via WhatsApp mobile
