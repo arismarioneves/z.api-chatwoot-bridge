@@ -1,8 +1,38 @@
-# z.api-chatwoot-bridge
+# Zapiwoot
 
-This is a bridge connection [Z-API](https://www.z-api.io/) \ [Chatwoot](https://github.com/chatwoot/chatwoot).
+Esta é uma ponte de conexão entre [Z-API](https://www.z-api.io/) e [Chatwoot](https://github.com/chatwoot/chatwoot).
 
-Zapiwot is a bridge connection between Z-API and Chatwoot. It allows you to connect your Z-API account with Chatwoot and send messages to your customers.
+Zapiwot é uma ponte entre Z-API e Chatwoot. Ele permite que você conecte sua conta Z-API ao Chatwoot e envie mensagens para seus clientes.
+
+🟢 [Versão 1.5]
+
+## Instalação
+
+### 1. Clonar o repositório e instalar dependências
+
+```bash
+git clone https://github.com/arismarioneves/z.api-chatwoot-bridge.git zapiwoot
+cd zapiwoot
+composer install
+```
+
+### 2. Configurar banco de dados
+
+```bash
+mysql -u root -p < banco.sql
+```
+
+Edite as credenciais do banco em `config.exemplo.php`
+
+### 3. Criar arquivo de configuração
+
+**IMPORTANTE:** Copie o arquivo de exemplo para criar sua configuração:
+
+```bash
+cp config.exemplo.php config.php
+```
+
+Edite `config.php` com suas credenciais do Z-API e Chatwoot.
 
 ## Configuração
 
@@ -50,7 +80,7 @@ Configurações / Caixas de Entrada / Adicionar Caixa de Entrada
 ## Estrutura do projeto
 
 ```
-z.api-chatwoot-bridge/
+zapiwoot/
 ├── logs/
 │   ├── index.php
 │   └── app.log
@@ -72,16 +102,28 @@ z.api-chatwoot-bridge/
 
 # Roadmap
 
+## Funcionalidades Implementadas
+
 - [x] Criar conexão com Z-API
 - [x] Criar conexão com Chatwoot
-- [x] Criar conexão com Webhook
-- [x] Enviar mensagens da Z-API (contato) para o Chatwoot
-- [x] Enviar mensagens do Chatwoot para o Z-API
-- [x] Enviar mensagens do Z-API (minhas) para o Chatwoot
+- [x] Enviar mensagens de texto da Z-API para o Chatwoot
+- [x] Enviar mensagens de texto do Chatwoot para o Z-API
 
-- [ ] Enviar anexos do Chatwoot para o Z-API
-- [ ] Enviar anexos do Z-API para o Chatwoot
+## Próximas Funcionalidades
 
-- [ ] Obter informações do contato no Z-API (nome, foto, etc)
+- [ ] Obter informações do contato no Chatwoot (nome, foto, etc)
+- [ ] Suportar o envio de anexos (imagens, vídeos, documentos, áudios)
+- [ ] Compatibilidade com conversas em grupo
+- [ ] Sincronizar mensagens enviadas via WhatsApp mobile
 
-- [ ] Copatibilidade com conversas em grupo
+## Limitações Conhecidas
+
+### Mensagens enviadas via WhatsApp mobile não aparecem no Chatwoot
+
+Quando o atendente envia uma mensagem diretamente pelo WhatsApp no celular (não pelo Chatwoot), essa mensagem **não é sincronizada** com o Chatwoot.
+
+**Motivo técnico:** A Z-API envia o `chatLid` (ID interno do WhatsApp) no campo `phone` ao invés do número de telefone real do contato. Sem o telefone real, não é possível identificar a conversa correta no Chatwoot.
+
+# Contribuição
+
+Se você quiser contribuir para o projeto, basta abrir um **Pull Request** ou salve o repositório dando uma ⭐ para incentivar o desenvolvimento.
