@@ -18,8 +18,6 @@ class WebhookHandler
 
     public function handle(array $payload): bool
     {
-        Logger::log('info', 'Webhook received', ['keys' => array_keys($payload)]);
-
         if ($this->isZAPIWebhook($payload)) {
             return $this->handleZAPIWebhook($payload);
         }
@@ -56,11 +54,11 @@ class WebhookHandler
             'fromApi' => $fromApi
         ]);
 
-        // Atualizar foto do perfil se disponível
+        // Atualizar foto do perfil
         $photoUrl = $payload['photo'] ?? null;
         $senderName = $payload['senderName'] ?? null;
 
-        if ($photoUrl && $senderName) {
+        if (!$fromMe && $photoUrl && $senderName) {
             $imageContent = @file_get_contents($photoUrl);
             if ($imageContent) {
                 $dir = ROOT . 'arquivos/perfil/';
@@ -130,8 +128,6 @@ class WebhookHandler
         $phone = Formatter::formatPhoneNumber($phone);
         $messageToSend = ($payload['content'] ?? '') . self::INVISIBLE_MARKER;
         $attachments = $payload['attachments'] ?? [];
-
-        Logger::log('info', 'Sending to Z-API', ['phone' => $phone]);
 
         if (!empty($attachments)) {
             foreach ($attachments as $attachment) {
