@@ -1,8 +1,8 @@
 <?php
 
-namespace WhatsappBridge;
+namespace ZapiWoot;
 
-use WhatsappBridge\Utils\Formatter;
+use ZapiWoot\Utils\Formatter;
 
 class WebhookHandler
 {

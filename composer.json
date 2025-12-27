@@ -1,11 +1,15 @@
 {
+    "name": "arismarioneves/z.api-chatwoot-bridge",
+    "description": "This is a bridge connection between Z-API and Chatwoot.",
+    "type": "library",
+    "license": "MIT",
     "require": {
         "php": ">=8.0",
         "monolog/monolog": "^2.0 || ^3.0"
     },
     "autoload": {
         "psr-4": {
-            "WhatsappBridge\\": "src/"
+            "ZapiWoot\\": "src/"
         }
     },
     "config": {

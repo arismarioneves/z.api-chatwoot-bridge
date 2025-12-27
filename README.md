@@ -93,7 +93,7 @@ zapiwoot/
 │   └── Logger.php
 ├── index.php
 ├── webhook.php
-├── config.php
+├── config.exemplo.php
 ├── composer.json
 ├── .gitignore
 └── README.md

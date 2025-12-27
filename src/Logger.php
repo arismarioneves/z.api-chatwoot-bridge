@@ -1,6 +1,6 @@
 <?php
 
-namespace WhatsappBridge;
+namespace ZapiWoot;
 
 use Monolog\Logger as MonologLogger;
 use Monolog\Handler\StreamHandler;

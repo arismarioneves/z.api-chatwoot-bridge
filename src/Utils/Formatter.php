@@ -1,6 +1,6 @@
 <?php
 
-namespace WhatsappBridge\Utils;
+namespace ZapiWoot\Utils;
 
 class Formatter
 {
