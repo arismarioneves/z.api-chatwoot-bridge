@@ -68,7 +68,6 @@ class ChatwootHandler
                 $identifierMatches = $contactIdentifier === $phone;
 
                 if ($phoneMatches || $phoneContains || $identifierMatches) {
-                    Logger::log('info', 'Found contact', ['id' => $contact['id']]);
                     return $contact['id'];
                 }
             }
@@ -93,7 +92,6 @@ class ChatwootHandler
         $contactId = $createResponse['payload']['contact']['id'] ?? $createResponse['id'] ?? null;
 
         if ($contactId) {
-            Logger::log('info', 'Created contact', ['id' => $contactId]);
             return $contactId;
         }
 
@@ -131,7 +129,6 @@ class ChatwootHandler
 
                 if ($conversationInboxId == $this->inboxId) {
                     if ($conversationStatus === 'open') {
-                        Logger::log('info', 'Found open conversation', ['id' => $conversation['id']]);
                         return $conversation['id'];
                     } elseif (!$foundConversationId) {
                         $foundConversationId = $conversation['id'];
@@ -142,7 +139,6 @@ class ChatwootHandler
         }
 
         if ($foundConversationId) {
-            Logger::log('info', 'Reopening conversation', ['id' => $foundConversationId]);
             $updateEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations/{$foundConversationId}/toggle_status";
             $this->makeRequest('POST', $updateEndpoint, ['status' => 'open']);
             return $foundConversationId;
@@ -160,7 +156,6 @@ class ChatwootHandler
         $conversationId = $createResponse['id'] ?? $createResponse['payload']['id'] ?? null;
 
         if ($conversationId) {
-            Logger::log('info', 'Created conversation', ['id' => $conversationId]);
             return $conversationId;
         }
 
@@ -220,7 +215,6 @@ class ChatwootHandler
         $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/{$contactId}";
         $this->makeRequest('PUT', $endpoint, $attributes);
 
-        Logger::log('info', 'Updated contact', ['phone' => $phone, 'attributes' => $attributes]);
         return true;
     }
 }
