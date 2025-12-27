@@ -96,7 +96,6 @@ zapiwoot/
 ├── config.php
 ├── composer.json
 ├── .gitignore
-├── .htaccess
 └── README.md
 ```
 
