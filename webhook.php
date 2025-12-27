@@ -3,8 +3,8 @@
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config.php';
 
-use WhatsappBridge\Logger;
-use WhatsappBridge\WebhookHandler;
+use ZapiWoot\Logger;
+use ZapiWoot\WebhookHandler;
 
 header('Content-Type: application/json');
 
