@@ -71,7 +71,6 @@ class ZAPIHandler
         }
 
         if (!$endpoint) {
-            Logger::log('error', 'Invalid media type', ['type' => $mediaType]);
             return null;
         }
 
