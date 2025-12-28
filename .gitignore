@@ -6,5 +6,9 @@
 /config.php
 
 # Logs
-/logs/*.log
-/logs/!index.php
+/arquivos/logs/*.log
+/arquivos/logs/!index.php
+
+# Perfil
+/arquivos/perfil/*.jpg
+/arquivos/perfil/!index.php
