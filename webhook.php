@@ -33,7 +33,7 @@ if (!empty($data['isGroup'])) {
 }
 
 try {
-    $handler = new WebhookHandler();
+    $handler = new WebhookHandler($pdo);
     $processed = $handler->handle($data);
     echo json_encode(['status' => $processed ? 'success' : 'ignored']);
 } catch (\InvalidArgumentException $e) {

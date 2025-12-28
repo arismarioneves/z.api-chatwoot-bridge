@@ -3,17 +3,20 @@
 namespace ZapiWoot;
 
 use ZapiWoot\Utils\Formatter;
+use ZapiWoot\Services\LidService;
 
 class WebhookHandler
 {
     private ChatwootHandler $chatwoot;
     private ZAPIHandler $zapi;
+    private LidService $lidService;
     private const INVISIBLE_MARKER = "\xE2\x80\x8B";
 
-    public function __construct()
+    public function __construct(?\PDO $pdo = null)
     {
         $this->chatwoot = new ChatwootHandler();
         $this->zapi = new ZAPIHandler();
+        $this->lidService = new LidService($pdo);
     }
 
     public function handle(array $payload): bool
@@ -45,20 +48,40 @@ class WebhookHandler
         $fromMe = $payload['fromMe'] ?? false;
         $fromApi = $payload['fromApi'] ?? false;
         $phoneRaw = $payload['phone'] ?? '';
-        $phone = Formatter::formatPhoneNumber($phoneRaw);
+
+        // Extrair LID e telefone do payload
+        $lid = $this->lidService->extractLidFromPayload($payload);
+        $phone = $this->lidService->extractPhoneFromPayload($payload);
+
+        // Se não conseguiu extrair telefone diretamente, tentar resolver via LID
+        if (!$phone && $lid) {
+            $phone = $this->lidService->resolvePhone($lid);
+        }
+
+        // Fallback: tentar formatar phoneRaw diretamente
+        if (!$phone && !Formatter::isLid($phoneRaw)) {
+            $phone = Formatter::formatPhoneNumber($phoneRaw);
+        }
 
         Logger::log('info', 'Z-API webhook', [
             'type' => $payload['type'] ?? 'N/A',
+            'phoneRaw' => $phoneRaw,
             'phone' => $phone,
+            'lid' => $lid,
             'fromMe' => $fromMe,
             'fromApi' => $fromApi
         ]);
 
-        // Atualizar foto do perfil
+        // Registrar mapeamento LID / Phone se temos ambos
+        if ($phone && $lid) {
+            $this->lidService->registerMapping($phone, $lid);
+        }
+
+        // Atualizar foto do perfil e registrar contato
         $photoUrl = $payload['photo'] ?? null;
         $senderName = $payload['senderName'] ?? null;
 
-        if (!$fromMe && $photoUrl && $senderName) {
+        if (!$fromMe && $phone && $photoUrl && $senderName) {
             $imageContent = @file_get_contents($photoUrl);
             if ($imageContent) {
                 $dir = ROOT . 'arquivos/perfil/';
@@ -70,19 +93,25 @@ class WebhookHandler
                     'name' => $senderName,
                     'avatar_url' => $localUrl
                 ]);
+
+                // Registrar contato completo no banco
+                $this->lidService->registerContact($phone, $lid, $senderName, $localUrl);
             }
         }
 
+        // Ignorar mensagens já enviadas pela API
         if ($fromMe && $fromApi) {
             return false;
         }
 
-        if ($fromMe && !$fromApi && str_contains($phoneRaw, '@lid')) {
-            Logger::log('info', 'Ignoring mobile message with chatLid');
-            return false;
-        }
-
+        // Se não conseguimos resolver o telefone, logar e ignorar
         if (empty($phone)) {
+            if ($lid) {
+                Logger::log('warning', 'Could not resolve phone from LID', [
+                    'lid' => $lid,
+                    'phoneRaw' => $phoneRaw
+                ]);
+            }
             return false;
         }
 
@@ -103,6 +132,13 @@ class WebhookHandler
 
         $messageType = $fromMe ? 'outgoing' : 'incoming';
 
+        // Se for mensagem outgoing (mobile), adicionar marcador para evitar loop
+        // Quando o Chatwoot gerar webhook de volta, o conteúdo terá o marcador
+        // e será ignorado no handleChatwootWebhook
+        if ($messageType === 'outgoing') {
+            $messageText .= self::INVISIBLE_MARKER;
+        }
+
         Logger::log('info', 'Sending to Chatwoot', ['phone' => $phone, 'type' => $messageType]);
         $this->chatwoot->sendMessage($phone, $messageText, $attachments, $messageType);
         return true;
@@ -118,6 +154,13 @@ class WebhookHandler
             return false;
         }
 
+        // Verificar se a mensagem já contém o marcador (evita loop de mensagens mobile)
+        $content = $payload['content'] ?? '';
+        if (str_ends_with($content, self::INVISIBLE_MARKER)) {
+            Logger::log('info', 'Chatwoot: Ignoring message with marker (mobile sync)');
+            return false;
+        }
+
         $phone = $payload['conversation']['meta']['sender']['phone_number'] ?? null;
 
         if (empty($phone)) {
@@ -126,7 +169,7 @@ class WebhookHandler
         }
 
         $phone = Formatter::formatPhoneNumber($phone);
-        $messageToSend = ($payload['content'] ?? '') . self::INVISIBLE_MARKER;
+        $messageToSend = $content . self::INVISIBLE_MARKER;
         $attachments = $payload['attachments'] ?? [];
 
         if (!empty($attachments)) {
@@ -154,7 +197,14 @@ class WebhookHandler
         $hasContent = isset($payload['content']) && $payload['content'] !== '';
         $hasAttachments = !empty($payload['attachments']);
 
-        return $isOutgoing && !$isPrivate && ($hasContent || $hasAttachments);
+        // Verificar se a mensagem foi enviada por um agente (não via API)
+        // Mensagens criadas via API não têm sender ou têm sender_type diferente de 'user'
+        $sender = $payload['sender'] ?? null;
+        $senderType = $sender['type'] ?? null;
+        $isFromAgent = $senderType === 'user'; // 'user' no Chatwoot significa agente/atendente
+
+        // Só enviar para Z-API se foi um agente que enviou (não via API)
+        return $isOutgoing && !$isPrivate && ($hasContent || $hasAttachments) && $isFromAgent;
     }
 
     private function processZAPIAttachments(array $payload): array
