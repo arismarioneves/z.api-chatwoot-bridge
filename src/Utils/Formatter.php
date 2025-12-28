@@ -4,9 +4,25 @@ namespace ZapiWoot\Utils;
 
 class Formatter
 {
+    /**
+     * Verifica se o valor é um LID do WhatsApp
+     */
+    public static function isLid(?string $value): bool
+    {
+        if (empty($value)) {
+            return false;
+        }
+        return str_contains($value, '@lid');
+    }
+
     public static function formatPhoneNumber(?string $phone): ?string
     {
         if (empty($phone)) {
+            return null;
+        }
+
+        // Se for LID, não é possível formatar como telefone
+        if (self::isLid($phone)) {
             return null;
         }
 

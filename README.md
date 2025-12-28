@@ -4,7 +4,7 @@ Esta é uma ponte de conexão entre [Z-API](https://www.z-api.io/) e [Chatwoot](
 
 Zapiwot é uma ponte entre Z-API e Chatwoot. Ele permite que você conecte sua conta Z-API ao Chatwoot e envie mensagens para seus clientes.
 
-🟢 [Versão 1.6.0]
+🟢 [Versão 1.7.0]
 
 ## Instalação
 
@@ -85,6 +85,10 @@ zapiwoot/
 │   ├── index.php
 │   └── app.log
 ├── src/
+│   ├── Repository/
+│   │   └── ContactRepository.php
+│   ├── Services/
+│   │   └── LidService.php
 │   ├── Utils/
 │   │   └── Formatter.php
 │   ├── WebhookHandler.php
@@ -108,17 +112,25 @@ zapiwoot/
 - [x] Enviar mensagens de texto da Z-API para o Chatwoot
 - [x] Enviar mensagens de texto do Chatwoot para o Z-API
 - [x] Exibir informações do contato (nome e foto)
+- [x] **Suporte a LID** - Mapeamento automático de LID / Phone
 - [ ] Suportar o envio de anexos (imagens, vídeos, documentos, áudios)
 - [ ] Compatibilidade com conversas em grupo
-- [ ] Sincronizar mensagens enviadas via WhatsApp mobile
 
-## Limitações Conhecidas
+## Suporte a LID (WhatsApp Identifier)
 
-### Mensagens enviadas via WhatsApp mobile não aparecem no Chatwoot
+O WhatsApp está adotando o LID como identificador de contato em substituição ao número de telefone. O Zapiwoot agora suporta essa funcionalidade:
 
-Quando o atendente envia uma mensagem diretamente pelo WhatsApp no celular (não pelo Chatwoot), essa mensagem **não é sincronizada** com o Chatwoot.
+- **Mapeamento automático**: Quando um webhook chega com telefone real + LID, o sistema salva o mapeamento
+- **Resolução de LID**: Mensagens enviadas via mobile com LID são resolvidas para o número conhecido
+- **Tabela de contatos**: Nova tabela `contatos` para armazenar os mapeamentos
 
-**Motivo técnico:** A Z-API envia o `chatLid` (ID interno do WhatsApp) no campo `phone` ao invés do número de telefone real do contato. Sem o telefone real, não é possível identificar a conversa correta no Chatwoot.
+### Como funciona
+
+1. Quando um cliente envia uma mensagem (webhook com phone + LID), o sistema salva o mapeamento
+2. Quando você envia uma mensagem pelo WhatsApp mobile, o webhook vem apenas com LID
+3. O sistema busca o phone correspondente ao LID e sincroniza com o Chatwoot
+
+> **Nota**: O primeiro contato deve sempre vir do cliente (para registrar o mapeamento LID / Phone)
 
 # Contribuição
 
