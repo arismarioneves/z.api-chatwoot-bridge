@@ -14,8 +14,8 @@ class WebhookHandler
 
     public function __construct(?\PDO $pdo = null)
     {
-        $this->chatwoot = new ChatwootHandler();
         $this->zapi = new ZAPIHandler();
+        $this->chatwoot = new ChatwootHandler($this->zapi);
         $this->lidService = new LidService($pdo);
     }
 

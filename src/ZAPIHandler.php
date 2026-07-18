@@ -3,6 +3,7 @@
 namespace ZapiWoot;
 
 use ZapiWoot\Utils\Formatter;
+use ZapiWoot\Utils\HttpClient;
 
 class ZAPIHandler
 {
@@ -10,6 +11,7 @@ class ZAPIHandler
     private string $token;
     private string $securityToken;
     private string $baseUrl;
+    private HttpClient $http;
 
     public function __construct()
     {
@@ -20,6 +22,7 @@ class ZAPIHandler
         $this->token = ZAPI_TOKEN;
         $this->securityToken = ZAPI_SECURITY_TOKEN;
         $this->baseUrl = rtrim(ZAPI_BASE_URL, '/');
+        $this->http = new HttpClient();
     }
 
     public function sendMessage(string $phone, string $message): ?array
@@ -108,43 +111,17 @@ class ZAPIHandler
             'Client-Token: ' . $this->securityToken
         ];
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        $result = $this->http->request($method, $url, $data, $headers);
 
-        if ($method === 'POST') {
-            curl_setopt($ch, CURLOPT_POST, true);
-            if ($data !== null) {
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-            }
-        } elseif ($method === 'GET' && !empty($data)) {
-            $url .= '?' . http_build_query($data);
-        } else {
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-            if ($data !== null) {
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-            }
+        if ($result['error']) {
+            Logger::log('error', 'Z-API cURL error', ['error' => $result['error']]);
+            throw new \Exception("Z-API cURL request failed: " . $result['error']);
         }
 
-        curl_setopt($ch, CURLOPT_URL, $url);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-
-        if ($curlError) {
-            Logger::log('error', 'Z-API cURL error', ['error' => $curlError]);
-            throw new \Exception("Z-API cURL request failed: " . $curlError);
+        if ($result['status'] >= 400) {
+            Logger::log('error', 'Z-API HTTP error', ['code' => $result['status'], 'response' => $result['body']]);
         }
 
-        $decodedResponse = json_decode($response, true);
-
-        if ($httpCode >= 400) {
-            Logger::log('error', 'Z-API HTTP error', ['code' => $httpCode, 'response' => $decodedResponse]);
-        }
-
-        return $decodedResponse;
+        return $result['body'];
     }
 }

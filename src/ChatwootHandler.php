@@ -3,6 +3,7 @@
 namespace ZapiWoot;
 
 use ZapiWoot\Utils\Formatter;
+use ZapiWoot\Utils\HttpClient;
 
 class ChatwootHandler
 {
@@ -11,8 +12,9 @@ class ChatwootHandler
     private string $inboxId;
     private string $baseUrl;
     private ZAPIHandler $zapi;
+    private HttpClient $http;
 
-    public function __construct()
+    public function __construct(?ZAPIHandler $zapi = null)
     {
         if (!defined('CHATWOOT_API_TOKEN') || !defined('CHATWOOT_ACCOUNT_ID') || !defined('CHATWOOT_INBOX_ID') || !defined('CHATWOOT_BASE_URL')) {
             throw new \Exception("Chatwoot configuration constants are not defined.");
@@ -21,7 +23,8 @@ class ChatwootHandler
         $this->accountId = CHATWOOT_ACCOUNT_ID;
         $this->inboxId = CHATWOOT_INBOX_ID;
         $this->baseUrl = rtrim(CHATWOOT_BASE_URL, '/');
-        $this->zapi = new ZAPIHandler();
+        $this->zapi = $zapi ?? new ZAPIHandler();
+        $this->http = new HttpClient();
     }
 
     public function sendMessage(string $sourceId, string $message, array $attachments = [], string $messageType = 'incoming'): ?array
@@ -117,7 +120,6 @@ class ChatwootHandler
     private function findOrCreateConversation(string $phone, int $contactId): ?int
     {
         $foundConversationId = null;
-        $foundConversationStatus = null;
 
         $listEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/{$contactId}/conversations";
         $listResponse = $this->makeRequest('GET', $listEndpoint);
@@ -132,7 +134,6 @@ class ChatwootHandler
                         return $conversation['id'];
                     } elseif (!$foundConversationId) {
                         $foundConversationId = $conversation['id'];
-                        $foundConversationStatus = $conversationStatus;
                     }
                 }
             }
@@ -166,43 +167,22 @@ class ChatwootHandler
     private function makeRequest(string $method, string $url, ?array $data = null): ?array
     {
         $headers = ['api_access_token: ' . $this->apiToken];
-        if ($method !== 'GET') {
+        if (strtoupper($method) !== 'GET') {
             $headers[] = 'Content-Type: application/json';
         }
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        $result = $this->http->request($method, $url, $data, $headers);
 
-        if ($method === 'POST' || $method === 'PUT' || $method === 'PATCH') {
-            if ($data !== null) {
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-            }
-        } elseif ($method === 'GET' && !empty($data)) {
-            $url .= '?' . http_build_query($data);
+        if ($result['error']) {
+            Logger::log('error', 'Chatwoot cURL error', ['error' => $result['error']]);
+            throw new \Exception("Chatwoot cURL request failed: " . $result['error']);
         }
 
-        curl_setopt($ch, CURLOPT_URL, $url);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-
-        if ($curlError) {
-            Logger::log('error', 'Chatwoot cURL error', ['error' => $curlError]);
-            throw new \Exception("Chatwoot cURL request failed: " . $curlError);
+        if ($result['status'] < 200 || $result['status'] >= 300) {
+            Logger::log('error', 'Chatwoot HTTP error', ['code' => $result['status'], 'response' => $result['body']]);
         }
 
-        $decodedResponse = json_decode($response, true);
-
-        if ($httpCode < 200 || $httpCode >= 300) {
-            Logger::log('error', 'Chatwoot HTTP error', ['code' => $httpCode, 'response' => $decodedResponse]);
-        }
-
-        return $decodedResponse;
+        return $result['body'];
     }
 
     public function updateContact(string $phone, array $attributes): bool
