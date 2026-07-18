@@ -4,6 +4,7 @@ namespace ZapiWoot;
 
 use ZapiWoot\Utils\Formatter;
 use ZapiWoot\Services\LidService;
+use ZapiWoot\Repository\ContactRepository;
 
 class WebhookHandler
 {
@@ -15,8 +16,10 @@ class WebhookHandler
 
     public function __construct(?\PDO $pdo = null)
     {
+        $contactRepository = $pdo ? new ContactRepository($pdo) : null;
+
         $this->zapi = new ZAPIHandler();
-        $this->chatwoot = new ChatwootHandler($this->zapi);
+        $this->chatwoot = new ChatwootHandler($this->zapi, $contactRepository);
         $this->lidService = new LidService($pdo);
     }
 

@@ -4,6 +4,17 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](http://keepachangelog.com/)
 e este projeto adere ao [Semantic Versioning](http://semver.org/).
 
+## [1.9.0] - 2026-07-18
+
+### Adicionado
+- Cache dos IDs de contato e conversa do Chatwoot na tabela `contatos`, reduzindo as chamadas à API do Chatwoot a cada mensagem.
+
+### Modificado
+- `ChatwootHandler` consulta o cache antes de buscar contato/conversa na API; a conversa em cache é reaberta e validada via `toggle_status`.
+
+### Notas de atualização
+- Instalações existentes: adicione as colunas `chatwoot_contact_id` e `chatwoot_conversation_id` à tabela `contatos` antes do deploy (ver `banco.sql`).
+
 ## [1.8.0] - 2026-07-18
 
 ### Adicionado
