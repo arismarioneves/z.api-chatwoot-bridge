@@ -7,6 +7,8 @@ use ZapiWoot\Utils\HttpClient;
 
 class ChatwootHandler
 {
+    private const MAX_MEDIA_BYTES = 26214400;
+
     private string $apiToken;
     private string $accountId;
     private string $inboxId;
@@ -43,6 +45,11 @@ class ChatwootHandler
                 return null;
 
             $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations/{$conversationId}/messages";
+
+            if (!empty($attachments)) {
+                return $this->sendMessageWithAttachments($endpoint, $message, $attachments, $messageType);
+            }
+
             $data = [
                 'content' => $message,
                 'message_type' => $messageType,
@@ -174,6 +181,103 @@ class ChatwootHandler
         }
 
         $result = $this->http->request($method, $url, $data, $headers);
+
+        if ($result['error']) {
+            Logger::log('error', 'Chatwoot cURL error', ['error' => $result['error']]);
+            throw new \Exception("Chatwoot cURL request failed: " . $result['error']);
+        }
+
+        if ($result['status'] < 200 || $result['status'] >= 300) {
+            Logger::log('error', 'Chatwoot HTTP error', ['code' => $result['status'], 'response' => $result['body']]);
+        }
+
+        return $result['body'];
+    }
+
+    /**
+     * Envia uma mensagem com anexos: baixa cada mídia e reenvia ao Chatwoot via multipart.
+     * A legenda acompanha o primeiro anexo. Se nenhuma mídia puder ser baixada, envia só o texto.
+     */
+    private function sendMessageWithAttachments(string $endpoint, string $message, array $attachments, string $messageType): ?array
+    {
+        $result = null;
+        $isFirst = true;
+
+        foreach ($attachments as $attachment) {
+            $url = $attachment['url'] ?? null;
+            if (!$url) {
+                continue;
+            }
+
+            $media = $this->downloadMediaToTemp($url);
+            if ($media === null) {
+                continue;
+            }
+
+            try {
+                $fields = [
+                    'message_type' => $messageType,
+                    'attachments[]' => new \CURLFile($media['path'], $media['mime'], $media['name']),
+                ];
+                if ($isFirst && $message !== '') {
+                    $fields['content'] = $message;
+                }
+
+                $result = $this->makeMultipartRequest($endpoint, $fields);
+                $isFirst = false;
+            } finally {
+                @unlink($media['path']);
+            }
+        }
+
+        // Nenhum anexo pôde ser baixado: garante ao menos a mensagem de texto
+        if ($isFirst) {
+            return $this->makeRequest('POST', $endpoint, [
+                'content' => $message !== '' ? $message : '[Mídia]',
+                'message_type' => $messageType,
+                'private' => false,
+            ]);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Baixa uma mídia para um arquivo temporário respeitando o limite de tamanho.
+     *
+     * @return array{path:string, mime:string, name:string}|null
+     */
+    private function downloadMediaToTemp(string $url): ?array
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'cw_media_');
+        if ($tmp === false) {
+            return null;
+        }
+
+        $res = $this->http->download($url, $tmp, self::MAX_MEDIA_BYTES);
+        if (!$res['ok']) {
+            @unlink($tmp);
+            Logger::log('warning', 'Failed to download media for Chatwoot', [
+                'status' => $res['status'],
+                'error' => $res['error']
+            ]);
+            return null;
+        }
+
+        $mime = $res['mime'] ? trim(explode(';', $res['mime'])[0]) : 'application/octet-stream';
+        $name = basename((string) parse_url($url, PHP_URL_PATH));
+        if ($name === '' || $name === false) {
+            $name = 'media';
+        }
+
+        return ['path' => $tmp, 'mime' => $mime, 'name' => $name];
+    }
+
+    private function makeMultipartRequest(string $url, array $fields): ?array
+    {
+        $headers = ['api_access_token: ' . $this->apiToken];
+
+        $result = $this->http->requestMultipart($url, $fields, $headers);
 
         if ($result['error']) {
             Logger::log('error', 'Chatwoot cURL error', ['error' => $result['error']]);

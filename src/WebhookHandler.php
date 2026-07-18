@@ -126,10 +126,6 @@ class WebhookHandler
             return false;
         }
 
-        if (empty($messageText) && !empty($attachments)) {
-            $messageText = '[Mídia]';
-        }
-
         if (str_ends_with($messageText, self::INVISIBLE_MARKER)) {
             return false;
         }
