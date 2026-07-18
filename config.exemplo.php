@@ -33,3 +33,16 @@ define('CHATWOOT_BASE_URL', 'https://***/');
 define('CHATWOOT_API_TOKEN', '');
 define('CHATWOOT_ACCOUNT_ID', '');
 define('CHATWOOT_INBOX_ID', '');
+
+// Banco de dados (opcional) — habilita o suporte a LID e o cache de IDs do Chatwoot.
+// Deixe $pdo como null para rodar sem banco. Rode banco.sql para criar a tabela `contatos`.
+$pdo = null;
+
+// Para ativar, preencha as credenciais e descomente:
+// try {
+//     $pdo = new PDO('mysql:host=localhost;dbname=zapiwoot;charset=utf8', 'usuario', 'senha');
+//     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+//     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+// } catch (PDOException $e) {
+//     $pdo = null;
+// }
