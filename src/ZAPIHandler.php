@@ -15,8 +15,10 @@ class ZAPIHandler
 
     public function __construct()
     {
-        if (!defined('ZAPI_INSTANCE_ID') || !defined('ZAPI_TOKEN') || !defined('ZAPI_SECURITY_TOKEN') || !defined('ZAPI_BASE_URL')) {
-            throw new \Exception("Z-API configuration constants are not defined.");
+        foreach (['ZAPI_INSTANCE_ID', 'ZAPI_TOKEN', 'ZAPI_SECURITY_TOKEN', 'ZAPI_BASE_URL'] as $const) {
+            if (!defined($const) || constant($const) === '') {
+                throw new \Exception("Configuração Z-API ausente ou vazia: {$const}");
+            }
         }
         $this->instanceId = ZAPI_INSTANCE_ID;
         $this->token = ZAPI_TOKEN;

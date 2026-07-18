@@ -16,8 +16,10 @@ class ChatwootHandler
 
     public function __construct(?ZAPIHandler $zapi = null)
     {
-        if (!defined('CHATWOOT_API_TOKEN') || !defined('CHATWOOT_ACCOUNT_ID') || !defined('CHATWOOT_INBOX_ID') || !defined('CHATWOOT_BASE_URL')) {
-            throw new \Exception("Chatwoot configuration constants are not defined.");
+        foreach (['CHATWOOT_API_TOKEN', 'CHATWOOT_ACCOUNT_ID', 'CHATWOOT_INBOX_ID', 'CHATWOOT_BASE_URL'] as $const) {
+            if (!defined($const) || constant($const) === '') {
+                throw new \Exception("Configuração Chatwoot ausente ou vazia: {$const}");
+            }
         }
         $this->apiToken = CHATWOOT_API_TOKEN;
         $this->accountId = CHATWOOT_ACCOUNT_ID;
