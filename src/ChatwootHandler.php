@@ -3,25 +3,32 @@
 namespace ZapiWoot;
 
 use ZapiWoot\Utils\Formatter;
+use ZapiWoot\Utils\HttpClient;
 
 class ChatwootHandler
 {
+    private const MAX_MEDIA_BYTES = 26214400;
+
     private string $apiToken;
     private string $accountId;
     private string $inboxId;
     private string $baseUrl;
     private ZAPIHandler $zapi;
+    private HttpClient $http;
 
-    public function __construct()
+    public function __construct(?ZAPIHandler $zapi = null)
     {
-        if (!defined('CHATWOOT_API_TOKEN') || !defined('CHATWOOT_ACCOUNT_ID') || !defined('CHATWOOT_INBOX_ID') || !defined('CHATWOOT_BASE_URL')) {
-            throw new \Exception("Chatwoot configuration constants are not defined.");
+        foreach (['CHATWOOT_API_TOKEN', 'CHATWOOT_ACCOUNT_ID', 'CHATWOOT_INBOX_ID', 'CHATWOOT_BASE_URL'] as $const) {
+            if (!defined($const) || constant($const) === '') {
+                throw new \Exception("Configuração Chatwoot ausente ou vazia: {$const}");
+            }
         }
         $this->apiToken = CHATWOOT_API_TOKEN;
         $this->accountId = CHATWOOT_ACCOUNT_ID;
         $this->inboxId = CHATWOOT_INBOX_ID;
         $this->baseUrl = rtrim(CHATWOOT_BASE_URL, '/');
-        $this->zapi = new ZAPIHandler();
+        $this->zapi = $zapi ?? new ZAPIHandler();
+        $this->http = new HttpClient();
     }
 
     public function sendMessage(string $sourceId, string $message, array $attachments = [], string $messageType = 'incoming'): ?array
@@ -38,6 +45,11 @@ class ChatwootHandler
                 return null;
 
             $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations/{$conversationId}/messages";
+
+            if (!empty($attachments)) {
+                return $this->sendMessageWithAttachments($endpoint, $message, $attachments, $messageType);
+            }
+
             $data = [
                 'content' => $message,
                 'message_type' => $messageType,
@@ -117,7 +129,6 @@ class ChatwootHandler
     private function findOrCreateConversation(string $phone, int $contactId): ?int
     {
         $foundConversationId = null;
-        $foundConversationStatus = null;
 
         $listEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/{$contactId}/conversations";
         $listResponse = $this->makeRequest('GET', $listEndpoint);
@@ -132,7 +143,6 @@ class ChatwootHandler
                         return $conversation['id'];
                     } elseif (!$foundConversationId) {
                         $foundConversationId = $conversation['id'];
-                        $foundConversationStatus = $conversationStatus;
                     }
                 }
             }
@@ -166,43 +176,119 @@ class ChatwootHandler
     private function makeRequest(string $method, string $url, ?array $data = null): ?array
     {
         $headers = ['api_access_token: ' . $this->apiToken];
-        if ($method !== 'GET') {
+        if (strtoupper($method) !== 'GET') {
             $headers[] = 'Content-Type: application/json';
         }
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        $result = $this->http->request($method, $url, $data, $headers);
 
-        if ($method === 'POST' || $method === 'PUT' || $method === 'PATCH') {
-            if ($data !== null) {
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        if ($result['error']) {
+            Logger::log('error', 'Chatwoot cURL error', ['error' => $result['error']]);
+            throw new \Exception("Chatwoot cURL request failed: " . $result['error']);
+        }
+
+        if ($result['status'] < 200 || $result['status'] >= 300) {
+            Logger::log('error', 'Chatwoot HTTP error', ['code' => $result['status'], 'response' => $result['body']]);
+        }
+
+        return $result['body'];
+    }
+
+    /**
+     * Envia uma mensagem com anexos: baixa cada mídia e reenvia ao Chatwoot via multipart.
+     * A legenda acompanha o primeiro anexo. Se nenhuma mídia puder ser baixada, envia só o texto.
+     */
+    private function sendMessageWithAttachments(string $endpoint, string $message, array $attachments, string $messageType): ?array
+    {
+        $result = null;
+        $isFirst = true;
+
+        foreach ($attachments as $attachment) {
+            $url = $attachment['url'] ?? null;
+            if (!$url) {
+                continue;
             }
-        } elseif ($method === 'GET' && !empty($data)) {
-            $url .= '?' . http_build_query($data);
+
+            $media = $this->downloadMediaToTemp($url);
+            if ($media === null) {
+                continue;
+            }
+
+            try {
+                $fields = [
+                    'message_type' => $messageType,
+                    'attachments[]' => new \CURLFile($media['path'], $media['mime'], $media['name']),
+                ];
+                if ($isFirst && $message !== '') {
+                    $fields['content'] = $message;
+                }
+
+                $result = $this->makeMultipartRequest($endpoint, $fields);
+                $isFirst = false;
+            } finally {
+                @unlink($media['path']);
+            }
         }
 
-        curl_setopt($ch, CURLOPT_URL, $url);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-
-        if ($curlError) {
-            Logger::log('error', 'Chatwoot cURL error', ['error' => $curlError]);
-            throw new \Exception("Chatwoot cURL request failed: " . $curlError);
+        // Nenhum anexo pôde ser baixado: garante ao menos a mensagem de texto
+        if ($isFirst) {
+            return $this->makeRequest('POST', $endpoint, [
+                'content' => $message !== '' ? $message : '[Mídia]',
+                'message_type' => $messageType,
+                'private' => false,
+            ]);
         }
 
-        $decodedResponse = json_decode($response, true);
+        return $result;
+    }
 
-        if ($httpCode < 200 || $httpCode >= 300) {
-            Logger::log('error', 'Chatwoot HTTP error', ['code' => $httpCode, 'response' => $decodedResponse]);
+    /**
+     * Baixa uma mídia para um arquivo temporário respeitando o limite de tamanho.
+     *
+     * @return array{path:string, mime:string, name:string}|null
+     */
+    private function downloadMediaToTemp(string $url): ?array
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'cw_media_');
+        if ($tmp === false) {
+            return null;
         }
 
-        return $decodedResponse;
+        $res = $this->http->download($url, $tmp, self::MAX_MEDIA_BYTES);
+        if (!$res['ok']) {
+            @unlink($tmp);
+            Logger::log('warning', 'Failed to download media for Chatwoot', [
+                'status' => $res['status'],
+                'error' => $res['error']
+            ]);
+            return null;
+        }
+
+        $mime = $res['mime'] ? trim(explode(';', $res['mime'])[0]) : 'application/octet-stream';
+        $name = basename((string) parse_url($url, PHP_URL_PATH));
+        if ($name === '' || $name === false) {
+            $name = 'media';
+        }
+
+        return ['path' => $tmp, 'mime' => $mime, 'name' => $name];
+    }
+
+    private function makeMultipartRequest(string $url, array $fields): ?array
+    {
+        $headers = ['api_access_token: ' . $this->apiToken];
+
+        $result = $this->http->requestMultipart($url, $fields, $headers);
+
+        if ($result['error']) {
+            Logger::log('error', 'Chatwoot cURL error', ['error' => $result['error']]);
+            throw new \Exception("Chatwoot cURL request failed: " . $result['error']);
+        }
+
+        if ($result['status'] < 200 || $result['status'] >= 300) {
+            Logger::log('error', 'Chatwoot HTTP error', ['code' => $result['status'], 'response' => $result['body']]);
+        }
+
+        return $result['body'];
     }
 
     public function updateContact(string $phone, array $attributes): bool

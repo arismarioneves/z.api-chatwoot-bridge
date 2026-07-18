@@ -11,11 +11,12 @@ class WebhookHandler
     private ZAPIHandler $zapi;
     private LidService $lidService;
     private const INVISIBLE_MARKER = "\xE2\x80\x8B";
+    private const MAX_PHOTO_BYTES = 5242880;
 
     public function __construct(?\PDO $pdo = null)
     {
-        $this->chatwoot = new ChatwootHandler();
         $this->zapi = new ZAPIHandler();
+        $this->chatwoot = new ChatwootHandler($this->zapi);
         $this->lidService = new LidService($pdo);
     }
 
@@ -82,20 +83,23 @@ class WebhookHandler
         $senderName = $payload['senderName'] ?? null;
 
         if (!$fromMe && $phone && $photoUrl && $senderName) {
-            $imageContent = @file_get_contents($photoUrl);
-            if ($imageContent) {
+            $imageContent = $this->downloadImage($photoUrl);
+            if ($imageContent !== null) {
                 $dir = ROOT . 'arquivos/perfil/';
+                if (!is_dir($dir)) {
+                    @mkdir($dir, 0755, true);
+                }
                 $filename = $phone . '.png';
-                file_put_contents($dir . $filename, $imageContent);
+                if (file_put_contents($dir . $filename, $imageContent) !== false) {
+                    $localUrl = HOST . 'arquivos/perfil/' . $filename;
+                    $this->chatwoot->updateContact($phone, [
+                        'name' => $senderName,
+                        'avatar_url' => $localUrl
+                    ]);
 
-                $localUrl = HOST . 'arquivos/perfil/' . $filename;
-                $this->chatwoot->updateContact($phone, [
-                    'name' => $senderName,
-                    'avatar_url' => $localUrl
-                ]);
-
-                // Registrar contato completo no banco
-                $this->lidService->registerContact($phone, $lid, $senderName, $localUrl);
+                    // Registrar contato completo no banco
+                    $this->lidService->registerContact($phone, $lid, $senderName, $localUrl);
+                }
             }
         }
 
@@ -120,10 +124,6 @@ class WebhookHandler
 
         if (empty($messageText) && empty($attachments)) {
             return false;
-        }
-
-        if (empty($messageText) && !empty($attachments)) {
-            $messageText = '[Mídia]';
         }
 
         if (str_ends_with($messageText, self::INVISIBLE_MARKER)) {
@@ -205,6 +205,44 @@ class WebhookHandler
 
         // Só enviar para Z-API se foi um agente que enviou (não via API)
         return $isOutgoing && !$isPrivate && ($hasContent || $hasAttachments) && $isFromAgent;
+    }
+
+    /**
+     * Baixa uma imagem de perfil respeitando limite de tamanho e validando o conteúdo.
+     * Retorna os bytes da imagem ou null quando a origem falha ou não é uma imagem.
+     */
+    private function downloadImage(string $url): ?string
+    {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+        curl_setopt($ch, CURLOPT_MAXFILESIZE, self::MAX_PHOTO_BYTES);
+        curl_setopt($ch, CURLOPT_NOPROGRESS, false);
+        curl_setopt($ch, CURLOPT_PROGRESSFUNCTION, function ($ch, $dlTotal, $dlNow) {
+            return $dlNow > self::MAX_PHOTO_BYTES ? 1 : 0;
+        });
+
+        $data = curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($error || $status < 200 || $status >= 300 || !is_string($data) || $data === '') {
+            Logger::log('warning', 'Failed to download profile photo', [
+                'status' => $status,
+                'error' => $error
+            ]);
+            return null;
+        }
+
+        if (@getimagesizefromstring($data) === false) {
+            Logger::log('warning', 'Profile photo is not a valid image');
+            return null;
+        }
+
+        return $data;
     }
 
     private function processZAPIAttachments(array $payload): array

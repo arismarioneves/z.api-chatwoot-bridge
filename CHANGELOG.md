@@ -4,6 +4,27 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](http://keepachangelog.com/)
 e este projeto adere ao [Semantic Versioning](http://semver.org/).
 
+## [1.8.0] - 2026-07-18
+
+### Adicionado
+- Encaminhamento de anexos recebidos do WhatsApp (imagens, vídeos, áudios e documentos) para o Chatwoot.
+- `HttpClient` compartilhado para as requisições às APIs Z-API e Chatwoot.
+
+### Modificado
+- `ChatwootHandler` passa a receber o `ZAPIHandler` por injeção de dependência.
+- Handlers validam se as credenciais estão definidas e não vazias, falhando com mensagem clara quando ausentes.
+
+### Corrigido
+- Anexos recebidos do WhatsApp não eram enviados ao Chatwoot (apareciam como "[Mídia]").
+
+### Segurança
+- Download de foto de perfil e de mídia com limite de tamanho, timeout e validação de conteúdo.
+
+### Removido
+- Código sem uso em `LidService` (`resolvePhoneFromPayload` e propriedade redundante).
+
+---
+
 ## [1.7.0] - 2025-12-27
 
 ### Adicionado
