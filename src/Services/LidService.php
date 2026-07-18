@@ -12,12 +12,9 @@ use ZapiWoot\Utils\Formatter;
 class LidService
 {
     private ?ContactRepository $repository = null;
-    private ?\PDO $pdo = null;
 
     public function __construct(?\PDO $pdo = null)
     {
-        $this->pdo = $pdo;
-
         if ($pdo) {
             $this->repository = new ContactRepository($pdo);
         }
@@ -28,10 +25,7 @@ class LidService
      */
     public function isLid(?string $identifier): bool
     {
-        if (empty($identifier)) {
-            return false;
-        }
-        return str_contains($identifier, '@lid');
+        return Formatter::isLid($identifier);
     }
 
     /**
@@ -184,28 +178,5 @@ class LidService
             ]);
             return false;
         }
-    }
-
-    /**
-     * Tenta resolver o telefone de um payload de webhook
-     * Primeiro tenta extrair diretamente, depois tenta resolver via LID
-     */
-    public function resolvePhoneFromPayload(array $payload): ?string
-    {
-        // Primeiro, tentar extrair o telefone diretamente
-        $phone = $this->extractPhoneFromPayload($payload);
-
-        if ($phone) {
-            return $phone;
-        }
-
-        // Se não encontrou telefone, tentar resolver via LID
-        $lid = $this->extractLidFromPayload($payload);
-
-        if ($lid) {
-            return $this->resolvePhone($lid);
-        }
-
-        return null;
     }
 }
