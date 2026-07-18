@@ -133,4 +133,45 @@ class ContactRepository
         $contact = $this->findByPhone($phone);
         return $contact['lid'] ?? null;
     }
+
+    /**
+     * Salva (upsert) os IDs de cache do Chatwoot para um telefone.
+     * Só sobrescreve o que for informado.
+     */
+    public function saveChatwootIds(string $phone, ?int $contactId = null, ?int $conversationId = null): bool
+    {
+        $existing = $this->findByPhone($phone);
+
+        if (!$existing) {
+            $sql = 'INSERT INTO contatos (phone, chatwoot_contact_id, chatwoot_conversation_id) VALUES (:phone, :contact_id, :conversation_id)';
+            $stmt = $this->pdo->prepare($sql);
+            return $stmt->execute([
+                'phone' => $phone,
+                'contact_id' => $contactId,
+                'conversation_id' => $conversationId,
+            ]);
+        }
+
+        $fields = [];
+        $params = ['phone' => $phone];
+
+        if ($contactId !== null) {
+            $fields[] = 'chatwoot_contact_id = :contact_id';
+            $params['contact_id'] = $contactId;
+        }
+
+        if ($conversationId !== null) {
+            $fields[] = 'chatwoot_conversation_id = :conversation_id';
+            $params['conversation_id'] = $conversationId;
+        }
+
+        if (empty($fields)) {
+            return true;
+        }
+
+        $sql = 'UPDATE contatos SET ' . implode(', ', $fields) . ' WHERE phone = :phone';
+        $stmt = $this->pdo->prepare($sql);
+
+        return $stmt->execute($params);
+    }
 }

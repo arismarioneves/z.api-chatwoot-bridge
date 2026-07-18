@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS contatos (
     lid VARCHAR(50) DEFAULT NULL COMMENT 'LID do WhatsApp (ex: g1ff3a2d@lid)',
     nome VARCHAR(255) DEFAULT NULL COMMENT 'Nome do contato',
     foto_url TEXT DEFAULT NULL COMMENT 'URL da foto de perfil',
+    chatwoot_contact_id INT DEFAULT NULL COMMENT 'Cache do ID do contato no Chatwoot',
+    chatwoot_conversation_id INT DEFAULT NULL COMMENT 'Cache do ID da conversa no Chatwoot',
     data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ultima_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY idx_phone (phone),

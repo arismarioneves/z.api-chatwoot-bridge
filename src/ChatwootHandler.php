@@ -4,6 +4,7 @@ namespace ZapiWoot;
 
 use ZapiWoot\Utils\Formatter;
 use ZapiWoot\Utils\HttpClient;
+use ZapiWoot\Repository\ContactRepository;
 
 class ChatwootHandler
 {
@@ -15,8 +16,9 @@ class ChatwootHandler
     private string $baseUrl;
     private ZAPIHandler $zapi;
     private HttpClient $http;
+    private ?ContactRepository $cache;
 
-    public function __construct(?ZAPIHandler $zapi = null)
+    public function __construct(?ZAPIHandler $zapi = null, ?ContactRepository $cache = null)
     {
         foreach (['CHATWOOT_API_TOKEN', 'CHATWOOT_ACCOUNT_ID', 'CHATWOOT_INBOX_ID', 'CHATWOOT_BASE_URL'] as $const) {
             if (!defined($const) || constant($const) === '') {
@@ -29,6 +31,7 @@ class ChatwootHandler
         $this->baseUrl = rtrim(CHATWOOT_BASE_URL, '/');
         $this->zapi = $zapi ?? new ZAPIHandler();
         $this->http = new HttpClient();
+        $this->cache = $cache;
     }
 
     public function sendMessage(string $sourceId, string $message, array $attachments = [], string $messageType = 'incoming'): ?array
@@ -64,6 +67,24 @@ class ChatwootHandler
     }
 
     private function findOrCreateContact(string $phone): ?int
+    {
+        if ($this->cache) {
+            $row = $this->cache->findByPhone($phone);
+            if (!empty($row['chatwoot_contact_id'])) {
+                return (int) $row['chatwoot_contact_id'];
+            }
+        }
+
+        $contactId = $this->resolveContactIdViaApi($phone);
+
+        if ($contactId && $this->cache) {
+            $this->cache->saveChatwootIds($phone, (int) $contactId);
+        }
+
+        return $contactId;
+    }
+
+    private function resolveContactIdViaApi(string $phone): ?int
     {
         $e164Phone = '+' . $phone;
         $searchEndpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/contacts/search";
@@ -127,6 +148,37 @@ class ChatwootHandler
     }
 
     private function findOrCreateConversation(string $phone, int $contactId): ?int
+    {
+        if ($this->cache) {
+            $row = $this->cache->findByPhone($phone);
+            if (!empty($row['chatwoot_conversation_id']) && $this->reopenConversation((int) $row['chatwoot_conversation_id'])) {
+                return (int) $row['chatwoot_conversation_id'];
+            }
+        }
+
+        $conversationId = $this->resolveConversationIdViaApi($phone, $contactId);
+
+        if ($conversationId && $this->cache) {
+            $this->cache->saveChatwootIds($phone, null, (int) $conversationId);
+        }
+
+        return $conversationId;
+    }
+
+    /**
+     * Reabre e valida uma conversa em cache. Retorna false quando ela não existe mais,
+     * sinalizando que o cache está obsoleto e a conversa precisa ser reresolvida.
+     */
+    private function reopenConversation(int $conversationId): bool
+    {
+        $endpoint = "{$this->baseUrl}/api/v1/accounts/{$this->accountId}/conversations/{$conversationId}/toggle_status";
+        $headers = ['api_access_token: ' . $this->apiToken, 'Content-Type: application/json'];
+        $result = $this->http->request('POST', $endpoint, ['status' => 'open'], $headers);
+
+        return $result['status'] >= 200 && $result['status'] < 300;
+    }
+
+    private function resolveConversationIdViaApi(string $phone, int $contactId): ?int
     {
         $foundConversationId = null;
 
